@@ -1,0 +1,2625 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>OptoView — Tabela Polarizada</title>
+<meta name="description" content="Ferramenta clínica de optometria comportamental: tabela ETDRS dissociada, vetogramas e teste de vergência.">
+<meta name="theme-color" content="#0b0b0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="OptoView">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{
+    --bg:#0b0b0d;
+    --panel:#141417;
+    --line:#2a2a30;
+    --text:#eaeaea;
+    --muted:#9a9aa2;
+    --accent:#3fb8af;
+    --warn:#d9822b;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 20px;
+    border-bottom:1px solid var(--line);
+    background:var(--panel);
+    position:sticky; top:0; z-index:10;
+  }
+  .topbar h1{font-size:15px; font-weight:600; margin:0; letter-spacing:.02em;}
+  .tabs{display:flex; gap:6px;}
+  .tab-btn{
+    background:transparent; border:1px solid var(--line); color:var(--muted);
+    padding:8px 14px; border-radius:6px; font-size:13px; cursor:pointer;
+  }
+  .tab-btn.active{background:var(--accent); border-color:var(--accent); color:#04211f; font-weight:600;}
+  .warning{
+    margin:16px 20px; padding:12px 14px;
+    border:1px solid var(--warn); border-radius:6px;
+    background:rgba(217,130,43,0.08);
+    color:#f0c090; font-size:13px; line-height:1.5;
+  }
+  .stage{
+    padding:0 20px 40px;
+    max-width:1100px;
+    margin:0 auto;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:20px;
+    margin-bottom:16px;
+  }
+  .controls{
+    display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+    margin-bottom:16px;
+  }
+  .controls label{font-size:12px; color:var(--muted); display:flex; flex-direction:column; gap:4px;}
+  .controls select, .controls input[type=range]{
+    background:#1c1c20; border:1px solid var(--line); color:var(--text);
+    border-radius:5px; padding:6px 8px; font-size:13px;
+  }
+  button.primary{
+    background:var(--accent); border:none; color:#04211f;
+    padding:9px 16px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer;
+  }
+  button.secondary{
+    background:transparent; border:1px solid var(--line); color:var(--text);
+    padding:9px 16px; border-radius:6px; font-size:13px; cursor:pointer;
+  }
+  button.secondary:disabled{
+    opacity:0.35; cursor:not-allowed;
+  }
+
+  /* --- ACUIDADE --- */
+  #acuidade-canvas-wrap{
+    position:relative;
+    background:#fff;
+    border-radius:6px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    min-height:420px;
+  }
+  #acuidade-canvas{display:block;}
+  .row-info{font-size:12px; color:var(--muted); margin-top:10px; text-align:center;}
+
+  .hidden{display:none !important;}
+  .note{font-size:12px; color:var(--muted); line-height:1.6; margin-top:10px;}
+
+  /* --- FULLSCREEN --- */
+  .fs-btn{
+    background:transparent; border:1px solid var(--line); color:var(--text);
+    padding:9px 14px; border-radius:6px; font-size:13px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .fs-btn:hover{border-color:var(--accent);}
+  :fullscreen{background:#000;}
+  .fs-overlay{
+    position:fixed;
+    bottom:18px; left:50%; transform:translateX(-50%);
+    display:none;
+    gap:10px; align-items:center;
+    background:rgba(20,20,23,0.9);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 14px;
+    z-index:9999;
+    backdrop-filter: blur(6px);
+  }
+  :fullscreen .fs-overlay{display:flex;}
+  :fullscreen .fs-overlay.overlay-hidden{display:none !important;}
+  .fs-overlay button{
+    background:var(--accent); border:none; color:#04211f;
+    padding:8px 14px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer;
+  }
+  .fs-overlay button.fs-exit{
+    background:transparent; border:1px solid #555; color:#eee;
+  }
+  .fs-overlay span{font-size:12px; color:#ccc; min-width:140px; text-align:center;}
+  :fullscreen #acuidade-canvas-wrap,
+  :fullscreen #etdrs-canvas-wrap,
+  :fullscreen #vect-canvas-wrap{
+    width:100vw; height:100vh; border-radius:0;
+  }
+  :fullscreen canvas{
+    max-width:96vw; max-height:88vh; width:auto; height:auto;
+  }
+  /* Modo Side by Side precisa ocupar a tela INTEIRA sem margens em fullscreen,
+     senão a TV expande cada metade com base em bordas erradas e a imagem sai descentralizada. */
+  :fullscreen .sbs-active canvas{
+    max-width:100vw; max-height:100vh; width:100vw; height:100vh;
+    object-fit:fill;
+  }
+
+  /* --- ETDRS DISSOCIADA --- */
+  #etdrs-canvas-wrap{
+    position:relative;
+    background:#fff;
+    border-radius:6px;
+    display:flex; align-items:center; justify-content:center;
+    padding:10px;
+    overflow:auto;
+  }
+  #etdrs-canvas-wrap.dark-bg{
+    background:#000;
+    padding:0;
+    border-radius:0;
+  }
+  :fullscreen #etdrs-canvas-wrap.dark-bg{
+    background:#000;
+  }
+  #etdrs-canvas{display:block;}
+  .etdrs-legend{
+    display:flex; gap:18px; margin-top:12px; font-size:12px; color:var(--muted);
+    flex-wrap:wrap;
+  }
+  .etdrs-legend span.dot{
+    display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px;
+  }
+  .dot-left{background:#3fb8af;}
+  .dot-right{background:#d9822b;}
+  .dot-center{background:#111;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Tabela Polarizada</h1>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="etdrs">ETDRS Dissociada</button>
+    <button class="tab-btn" data-tab="vectogram">Vetograma de Corda</button>
+  </div>
+</div>
+
+<div class="stage">
+  <!-- ================= ETDRS DISSOCIADA (unificada: vertical ou horizontal) ================= -->
+  <div id="tab-etdrs" class="panel">
+    <div class="controls">
+      <label>Diagonal da tela (polegadas)
+        <input type="number" id="cal-diag" value="42" min="10" max="120" step="0.1" style="width:80px;">
+      </label>
+      <label>Resolução horizontal (px)
+        <input type="number" id="cal-reswidth" value="1920" min="640" max="7680" step="1" style="width:90px;">
+      </label>
+      <label>Distância de teste (m)
+        <input type="number" id="cal-dist" value="3" min="0.5" max="10" step="0.1" style="width:70px;">
+      </label>
+    </div>
+    <div class="controls">
+      <label>Orientação da âncora
+        <select id="etdrs-orientation">
+          <option value="vertical">Vertical (colunas: esquerda / âncora / direita)</option>
+          <option value="horizontal">Horizontal (linhas: topo / âncora / base)</option>
+        </select>
+      </label>
+      <label id="etdrs-layout-label">Layout de tamanhos
+        <select id="etdrs-layout">
+          <option value="single">Tamanho único (1 tamanho por tela, navega com ◀▶)</option>
+          <option value="series">Decrescente (3 tamanhos por tela)</option>
+        </select>
+      </label>
+      <label id="etdrs-single-row-label" style="display:none;">Tamanho
+        <select id="etdrs-single-row">
+          <option value="0">20/200</option>
+          <option value="1">20/160</option>
+          <option value="2">20/125</option>
+          <option value="3">20/100</option>
+          <option value="4">20/80</option>
+          <option value="5">20/63</option>
+          <option value="6">20/50</option>
+          <option value="7">20/40</option>
+          <option value="8">20/32</option>
+          <option value="9">20/25</option>
+          <option value="10">20/20</option>
+        </select>
+      </label>
+      <label>Tipo de conteúdo
+        <select id="etdrs-content-type">
+          <option value="letters">Letras ETDRS (C D H K N O R S V Z)</option>
+          <option value="colored">Letras coloridas</option>
+          <option value="numbers">Números — preto (1 2 3 4 5 6 7 8 9 0)</option>
+          <option value="numberscolor">Números coloridos</option>
+          <option value="kids">Objetos infantis — preto (círculo, triângulo, quadrado, estrela, flor)</option>
+          <option value="kidscolor">Objetos infantis — coloridos</option>
+          <option value="vergence">Teste de Vergência / Foria (objeto móvel)</option>
+        </select>
+      </label>
+      <label>Fonte
+        <select id="etdrs-font">
+          <option value="Arial, Helvetica, sans-serif">Arial (ETDRS padrão — sem serifa, letras abertas)</option>
+          <option value="'Times New Roman', Times, serif">Times New Roman (serifa clássica — traços finos e grossos)</option>
+          <option value="'Courier New', Courier, monospace">Courier New (monoespaçada — letras de mesma largura)</option>
+          <option value="'Century Gothic', 'Futura', sans-serif">Century Gothic (geométrica — formas circulares perfeitas)</option>
+          <option value="'Comic Sans MS', 'Chalkboard SE', cursive">Comic Sans (lúdica — muito diferente das outras)</option>
+          <option value="Georgia, serif">Georgia (serifa ampla — muito legível em telas)</option>
+        </select>
+      </label>
+      <label>Formato de exibição
+        <select id="etdrs-mode">
+          <option value="sbs">Side by Side (TV 3D passiva)</option>
+          <option value="interlace">Entrelaçado linha a linha (monitor 3D passivo)</option>
+          <option value="flat">Sem dissociação (referência, todas letras pretas)</option>
+          <option value="channel">Calibração de canal (fundo verde/vermelho)</option>
+        </select>
+      </label>
+      <button class="primary" id="etdrs-redraw">Nova sequência de letras</button>
+      <button class="fs-btn" id="etdrs-fullscreen">⛶ Tela cheia</button>
+    </div>
+
+    <div class="controls" id="etdrs-sbs-align-controls" style="display:none; justify-content:center; gap:16px; align-items:center;">
+      <span style="font-size:12px; color:var(--muted);">Ajuste fino (metade direita da tela / olho esquerdo):</span>
+      <span style="font-size:12px; color:var(--muted);">Vertical:</span>
+      <button class="secondary" id="etdrs-sbs-up">▲</button>
+      <span id="etdrs-sbs-v-label" style="font-size:13px; min-width:46px; text-align:center;">0px</span>
+      <button class="secondary" id="etdrs-sbs-down">▼</button>
+      <span style="font-size:12px; color:var(--muted); margin-left:10px;">Horizontal:</span>
+      <button class="secondary" id="etdrs-sbs-left">◀</button>
+      <span id="etdrs-sbs-h-label" style="font-size:13px; min-width:46px; text-align:center;">0px</span>
+      <button class="secondary" id="etdrs-sbs-right">▶</button>
+      <button class="secondary" id="etdrs-sbs-reset">Zerar tudo</button>
+      <span id="etdrs-sbs-saved-indicator" style="font-size:12px; color:var(--accent); min-width:70px;"></span>
+    </div>
+
+    <div class="panel" id="vergence-panel" style="display:none; background:#0f0f12; margin-top:10px;">
+      <div class="controls">
+        <label>Modo do objeto
+          <select id="verg-object-mode">
+            <option value="single">1 objeto (binocular — mesmo objeto para os dois olhos)</option>
+            <option value="dual">2 objetos (dissociado — 1 por olho, paciente relata quantos vê)</option>
+          </select>
+        </label>
+        <label>Figura
+          <select id="verg-shape">
+            <option value="bird">Passarinho</option>
+            <option value="boat">Barquinho</option>
+            <option value="ball">Bola</option>
+            <option value="star">Estrela</option>
+            <option value="dog">Cachorrinho</option>
+            <option value="car">Carrinho</option>
+            <option value="worth">Luzes de Worth (4 pontos)</option>
+          </select>
+        </label>
+        <label>Passo do movimento
+          <select id="verg-step">
+            <option value="2">Fino (2px)</option>
+            <option value="5" selected>Médio (5px)</option>
+            <option value="15">Grosso (15px)</option>
+            <option value="30">Muito grosso (30px)</option>
+            <option value="45">Extra grosso (45px)</option>
+            <option value="60">Máximo (60px)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="controls" style="justify-content:center; gap:10px;">
+        <span style="font-size:12px; color:var(--muted);">Disparidade do objeto do olho esquerdo em relação ao direito:</span>
+        <span style="font-size:12px; color:var(--muted);">Vertical:</span>
+        <button class="secondary" id="verg-up">▲</button>
+        <span id="verg-v-label" style="font-size:13px; min-width:50px; text-align:center;">0px</span>
+        <button class="secondary" id="verg-down">▼</button>
+        <span style="font-size:12px; color:var(--muted); margin-left:10px;">Horizontal:</span>
+        <button class="secondary" id="verg-left">◀</button>
+        <span id="verg-h-label" style="font-size:13px; min-width:50px; text-align:center;">0px</span>
+        <button class="secondary" id="verg-right">▶</button>
+        <button class="secondary" id="verg-reset">Centralizar</button>
+      </div>
+      <div class="note">
+        <strong>Modo binocular (1 objeto):</strong> os dois objetos se movem em espelho a partir do centro — aumentar o deslocamento os afasta (simulando divergência) ou aproxima (convergência), conforme a direção. O cérebro funde as duas posições, permitindo perceber profundidade/desvio.<br>
+        <strong>Modo dissociado (2 objetos):</strong> cada olho vê seu próprio objeto; ambos começam alinhados no centro e se movem em direções opostas ao ajustar. Pergunte ao paciente a posição relativa percebida entre os dois — isso estima a magnitude e direção da foria/tropia. Valores em pixels não correspondem diretamente a dioptrias prismáticas; use como ferramenta de triagem/observação, não como medida calibrada em DP.
+      </div>
+    </div>
+
+    <div class="controls" id="etdrs-block-nav" style="justify-content:center; gap:20px;">
+      <button class="secondary" id="etdrs-prev">◀ Bloco anterior</button>
+      <span id="etdrs-block-label" style="font-size:13px; color:var(--muted); min-width:160px; text-align:center;"></span>
+      <button class="secondary" id="etdrs-next">Próximo bloco ▶</button>
+    </div>
+
+    <div id="etdrs-canvas-wrap">
+      <canvas id="etdrs-canvas" width="1920" height="1080"></canvas>
+      <div class="fs-overlay">
+        <button id="etdrs-fs-prev">◀</button>
+        <button id="etdrs-fs-redraw">Novas letras</button>
+        <span id="etdrs-fs-label"></span>
+        <button id="etdrs-fs-next">▶</button>
+        <button id="etdrs-fs-sbs-up" style="display:none;">▲</button>
+        <button id="etdrs-fs-sbs-down" style="display:none;">▼</button>
+        <button id="etdrs-fs-sbs-left" style="display:none;">◀</button>
+        <button id="etdrs-fs-sbs-right" style="display:none;">▶</button>
+        <button id="verg-fs-up" style="display:none;">▲</button>
+        <button id="verg-fs-down" style="display:none;">▼</button>
+        <button id="verg-fs-left" style="display:none;">◀</button>
+        <button id="verg-fs-right" style="display:none;">▶</button>
+        <button id="verg-fs-reset" style="display:none;">Centralizar</button>
+        <select id="verg-fs-shape" style="display:none; font-size:12px; padding:4px 6px; background:#222; color:#fff; border:1px solid #555; border-radius:4px;">
+          <option value="bird">Passarinho</option>
+          <option value="boat">Barquinho</option>
+          <option value="ball">Bola</option>
+          <option value="star">Estrela</option>
+          <option value="dog">Cachorrinho</option>
+          <option value="car">Carrinho</option>
+          <option value="worth">Luzes de Worth</option>
+        </select>
+        <button class="fs-exit" id="etdrs-fs-exit">Sair ✕</button>
+      </div>
+    </div>
+
+    <div class="etdrs-legend" id="etdrs-legend-vertical">
+      <span><span class="dot dot-left"></span>2 letras à esquerda — visíveis só pelo olho direito</span>
+      <span><span class="dot dot-center"></span>1 letra central — binocular (âncora de fusão)</span>
+      <span><span class="dot dot-right"></span>2 letras à direita — visíveis só pelo olho esquerdo</span>
+    </div>
+    <div class="etdrs-legend hidden" id="etdrs-legend-horizontal">
+      <span><span class="dot dot-left"></span>Linha superior — visível só pelo olho direito</span>
+      <span><span class="dot dot-center"></span>Linha central — binocular (âncora de fusão)</span>
+      <span><span class="dot dot-right"></span>Linha inferior — visível só pelo olho esquerdo</span>
+    </div>
+
+    <div class="note">
+      Tabela ETDRS (conjunto Sloan: C D H K N O R S V Z), progressão logMAR em notação de pés (20/x), com dissociação óptica via entrelaçamento linha a linha para monitor 3D passivo, seguindo a convenção cruzada do Thomson Test Chart: o lado esquerdo/linha superior da tela é visto pelo <strong>olho direito</strong>, e o lado direito/linha inferior pelo <strong>olho esquerdo</strong>. Tamanho das letras calculado a partir da diagonal, resolução e distância de teste informadas acima. Use as setas para avançar do 20/200 até o 20/20. Se o paciente não conseguir identificar as letras/linha de um lado enquanto lê normalmente a âncora e o outro lado, isso sugere possível supressão do olho correspondente — correlacione clinicamente, este é um instrumento de apoio, não substitui teste de supressão validado.
+      <br><br>
+      <strong>Sobre o modo "Side by Side":</strong> use esse formato para TVs 3D passivas (em vez do monitor com micropolarizador). Antes de usar, selecione "Side by Side" (ou "SBS") no menu 3D da própria TV — é ela quem expande cada metade da tela de volta ao tamanho cheio e faz a separação óptica pelos óculos polarizados.
+    </div>
+  </div>
+
+  <!-- ================= VETOGRAMA DE CORDA (Bernell-style) ================= -->
+  <div id="tab-vectogram" class="panel hidden">
+    <div class="controls">
+      <label>Formato de exibição
+        <select id="vect-mode">
+          <option value="sbs" selected>Side by Side (TV 3D passiva)</option>
+          <option value="interlace">Entrelaçado linha a linha (monitor 3D passivo)</option>
+          <option value="flat">Visualização plana (referência)</option>
+        </select>
+      </label>
+      <label>Tipo de vetograma
+        <select id="vect-type">
+          <option value="spiral">Espiral circular (corda)</option>
+          <option value="rect">Espiral retangular (Three Dimension Rx)</option>
+          <option value="balloons">Bolas coloridas com letras/números</option>
+        </select>
+      </label>
+      <label>Disparidade base
+        <select id="vect-disparity">
+          <option value="6">Mínima (6px)</option>
+          <option value="14" selected>Média (14px)</option>
+          <option value="26">Ampla (26px)</option>
+          <option value="42">Máxima (42px)</option>
+        </select>
+      </label>
+      <button class="fs-btn" id="vect-fullscreen">⛶ Tela cheia</button>
+    </div>
+    <div class="controls" style="justify-content:center; gap:14px; align-items:center;">
+      <span style="font-size:12px; color:var(--muted);">Vergência horizontal:</span>
+      <button class="secondary" id="vect-h-neg">◀ Divergência</button>
+      <span id="vect-h-label" style="font-size:13px; min-width:50px; text-align:center;">-80px</span>
+      <button class="secondary" id="vect-h-pos">Convergência ▶</button>
+      <span style="font-size:12px; color:var(--muted); margin-left:12px;">Vertical:</span>
+      <button class="secondary" id="vect-v-neg">▲ Hiperforia</button>
+      <span id="vect-v-label" style="font-size:13px; min-width:50px; text-align:center;">0px</span>
+      <button class="secondary" id="vect-v-pos">Hipoforia ▼</button>
+      <button class="secondary" id="vect-center">Centralizar</button>
+    </div>
+    <div id="vect-canvas-wrap" style="position:relative; background:#f8f9fa; border-radius:6px; display:flex; align-items:center; justify-content:center; padding:0;">
+      <canvas id="vect-canvas" width="1920" height="1080"></canvas>
+      <div class="fs-overlay">
+        <button id="vect-fs-h-neg">◀</button>
+        <button id="vect-fs-h-pos">▶</button>
+        <button id="vect-fs-v-neg">▲</button>
+        <button id="vect-fs-v-pos">▼</button>
+        <button id="vect-fs-center">Centralizar</button>
+        <span id="vect-fs-label" style="font-size:12px; color:#ccc; min-width:160px; text-align:center;"></span>
+        <button class="fs-exit" id="vect-fs-exit">Sair ✕</button>
+      </div>
+    </div>
+    <div class="note">
+      <strong>Vetograma de Corda</strong> — baseado nos modelos Three Dimension Rx / Bernell. Use os controles de vergência horizontal para trabalhar convergência/divergência, e o vertical para heterotropias verticais (hiperforia/hipoforia). Swipe horizontal na tela ajusta a vergência H; swipe vertical ajusta a vergência V. Modo SBS requer TV 3D passiva com menu SBS ativado; entrelaçado requer monitor 3D passivo com óculos polarizados.
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ---------------- TAB SWITCH ---------------- */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-etdrs').classList.toggle('hidden', btn.dataset.tab!=='etdrs');
+    document.getElementById('tab-vectogram').classList.toggle('hidden', btn.dataset.tab!=='vectogram');
+    if(btn.dataset.tab === 'vectogram') renderVectogram();
+  });
+});
+
+/* ================= CALIBRAÇÃO FÍSICA COMPARTILHADA ================= */
+const calDiagInput = document.getElementById('cal-diag');
+const calResInput = document.getElementById('cal-reswidth');
+const calDistInput = document.getElementById('cal-dist');
+
+// Todas as configurações de calibração (tela + alinhamento SBS) são persistidas juntas em localStorage,
+// para não precisar reconfigurar a cada sessão no mesmo tablet/navegador.
+const CALIBRATION_STORAGE_KEY = 'tabelaPolarizada_calibration';
+
+function loadCalibration(){
+  // Padrões pré-configurados com os valores do consultório:
+  // TV 42", Full HD (1920px), distância 3m, alinhamento SBS H=130px V=0px
+  const defaults = { diag: 42, resWidth: 1920, dist: 3, sbsV: 0, sbsH: 130 };
+  try{
+    const raw = localStorage.getItem(CALIBRATION_STORAGE_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      return {
+        diag: typeof parsed.diag === 'number' ? parsed.diag : defaults.diag,
+        resWidth: typeof parsed.resWidth === 'number' ? parsed.resWidth : defaults.resWidth,
+        dist: typeof parsed.dist === 'number' ? parsed.dist : defaults.dist,
+        sbsV: typeof parsed.sbsV === 'number' ? parsed.sbsV : defaults.sbsV,
+        sbsH: typeof parsed.sbsH === 'number' ? parsed.sbsH : defaults.sbsH
+      };
+    }
+  } catch(e){ /* localStorage indisponível ou dado corrompido — usa padrão */ }
+  return defaults;
+}
+
+function saveCalibration(){
+  try{
+    localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify({
+      diag: parseFloat(calDiagInput.value) || 42,
+      resWidth: parseFloat(calResInput.value) || 1920,
+      dist: parseFloat(calDistInput.value) || 3,
+      sbsV: sbsVerticalOffset,
+      sbsH: sbsHorizontalOffset
+    }));
+    return true;
+  } catch(e){
+    return false;
+  }
+}
+
+const _savedCalibration = loadCalibration();
+calDiagInput.value = _savedCalibration.diag;
+calResInput.value = _savedCalibration.resWidth;
+calDistInput.value = _savedCalibration.dist;
+let sbsVerticalOffset = _savedCalibration.sbsV;
+let sbsHorizontalOffset = _savedCalibration.sbsH;
+
+// Salva automaticamente sempre que diagonal, resolução ou distância mudarem.
+calDiagInput.addEventListener('change', saveCalibration);
+calResInput.addEventListener('change', saveCalibration);
+calDistInput.addEventListener('change', saveCalibration);
+
+// Calcula altura da letra em px para uma dada notação Snellen (denominador em pés),
+// a partir da diagonal física da tela, resolução horizontal e distância de teste.
+// Fórmula padrão: ângulo visual = 5 arcmin * (denominador/20); altura = 2 * dist * tan(ângulo/2)
+function letterHeightPx(snellenDenominator){
+  const diagIn = parseFloat(calDiagInput.value) || 42;
+  const resW = parseFloat(calResInput.value) || 1920;
+  const distM = parseFloat(calDistInput.value) || 3;
+
+  // Assume proporção 16:9 para converter diagonal -> largura física
+  const diagMm = diagIn * 25.4;
+  const ratioDiag = Math.sqrt(16*16 + 9*9);
+  const widthMm = diagMm * (16/ratioDiag);
+  const pxPerMm = resW / widthMm;
+
+  const arcmin = 5 * (snellenDenominator/20);
+  const thetaRad = (arcmin/60) * (Math.PI/180);
+  const heightM = distM * Math.tan(thetaRad);
+  const heightMm = heightM * 1000;
+  return heightMm * pxPerMm;
+}
+
+function currentCalibrationLabel(){
+  const diagIn = parseFloat(calDiagInput.value) || 42;
+  const resW = parseFloat(calResInput.value) || 1920;
+  const distM = parseFloat(calDistInput.value) || 3;
+  return `Tela ${diagIn}" · ${resW}px largura · distância ${distM}m`;
+}
+
+/* ================= ETDRS DISSOCIADA ================= */
+const etCanvas = document.getElementById('etdrs-canvas');
+const etctx = etCanvas.getContext('2d');
+const etModeSel = document.getElementById('etdrs-mode');
+const etContentTypeSel = document.getElementById('etdrs-content-type');
+const etOrientSel = document.getElementById('etdrs-orientation');
+const etLayoutSel = document.getElementById('etdrs-layout');
+const etSingleRowSel = document.getElementById('etdrs-single-row');
+const etSingleRowLabel = document.getElementById('etdrs-single-row-label');
+const etFontSel = document.getElementById('etdrs-font');
+const etRedrawBtn = document.getElementById('etdrs-redraw');
+const etPrevBtn = document.getElementById('etdrs-prev');
+const etNextBtn = document.getElementById('etdrs-next');
+const etBlockLabel = document.getElementById('etdrs-block-label');
+const etLegendVertical = document.getElementById('etdrs-legend-vertical');
+const etLegendHorizontal = document.getElementById('etdrs-legend-horizontal');
+const etSbsAlignControls = document.getElementById('etdrs-sbs-align-controls');
+const etSbsUpBtn = document.getElementById('etdrs-sbs-up');
+const etSbsDownBtn = document.getElementById('etdrs-sbs-down');
+const etSbsLeftBtn = document.getElementById('etdrs-sbs-left');
+const etSbsRightBtn = document.getElementById('etdrs-sbs-right');
+const etSbsResetBtn = document.getElementById('etdrs-sbs-reset');
+const etSbsVLabel = document.getElementById('etdrs-sbs-v-label');
+const etSbsHLabel = document.getElementById('etdrs-sbs-h-label');
+const etSbsSavedIndicator = document.getElementById('etdrs-sbs-saved-indicator');
+
+const EW = etCanvas.width, EH = etCanvas.height;
+const SLOAN = ['C','D','H','K','N','O','R','S','V','Z'];
+const NUMBERS = ['1','2','3','4','5','6','7','8','9','0'];
+
+// Objetos infantis — estilo outline/preenchido preto, igual aos testes clínicos reais:
+const KIDS_SHAPES = ['circle','triangle','square','star','flower'];
+
+// Conjunto de letras coloridas para tabela infantil colorida
+const COLORED_LETTERS = ['E','F','P','T','O','Z','L','D','C'];
+
+// Paleta de cores vivas — sem marrom nem amarelo morto.
+// Cores saturadas e distintas, legíveis em fundo branco.
+const COLOR_PALETTE = [
+  '#e53935', // vermelho vivo
+  '#d81b60', // pink/magenta
+  '#8e24aa', // roxo
+  '#3949ab', // azul índigo
+  '#1e88e5', // azul vivo
+  '#039be5', // azul celeste
+  '#00897b', // verde teal
+  '#43a047', // verde vivo
+  '#f4511e', // laranja
+  '#e91e63', // rosa quente
+  '#00acc1', // ciano
+  '#7cb342', // verde limão
+];
+
+// Gera um mapa de cores para uma linha completa, garantindo que nenhuma cor
+// se repita dentro da mesma linha (sem duas cores iguais lado a lado ou na linha).
+function generateRowColors(numCols){
+  const out = [];
+  let lastIdx = -1;
+  for(let i=0;i<numCols;i++){
+    let idx;
+    let tries = 0;
+    do {
+      idx = Math.floor(Math.random() * COLOR_PALETTE.length);
+      tries++;
+    } while(idx === lastIdx && tries < 20); // evita mesma cor consecutiva
+    out.push(idx);
+    lastIdx = idx;
+  }
+  return out;
+}
+
+// Mapa de cor por posição: { 'rowIdx_colIdx': colorIdx }
+// Regenerado a cada generateEtdrsLetters() — sem repetição na mesma linha.
+let symbolColorMap = {};
+
+function getColorForPosition(rowIdx, colIdx){
+  const key = `${rowIdx}_${colIdx}`;
+  if(symbolColorMap[key] === undefined){
+    // Deriva cor de forma determinística a partir da chave (pseudo-hash)
+    // Garante que a mesma posição sempre tenha a mesma cor dentro de uma sessão
+    // MAS cores diferentes entre posições diferentes
+    const prev = symbolColorMap[`${rowIdx}_${colIdx-1}`];
+    // Usa um hash simples da chave para escolher uma cor diferente da anterior
+    let hash = 0;
+    for(let i=0;i<key.length;i++) hash = (hash * 31 + key.charCodeAt(i)) & 0xffff;
+    let idx = hash % COLOR_PALETTE.length;
+    // Se coincidir com a anterior, avança
+    if(idx === prev) idx = (idx + 1) % COLOR_PALETTE.length;
+    symbolColorMap[key] = idx;
+  }
+  return symbolColorMap[key];
+}
+
+// Pré-gera o mapa de cores para todos os rows e colunas de uma vez,
+// garantindo sem repetição dentro de cada linha.
+function getColorForPosition(rowIdx, colIdx){
+  const key = `${rowIdx}_${colIdx}`;
+  return symbolColorMap[key] !== undefined ? symbolColorMap[key] : Math.floor(Math.random()*COLOR_PALETTE.length);
+}
+
+function generateColorMap(){
+  symbolColorMap = {};
+  const n = COLOR_PALETTE.length;
+  // Gera cores para todas as combinações possíveis que o vertical usa:
+  // - modo normal: rowIdx = rIdx (0-10), colIdx = rIdx*100+cIdx (0-1010)
+  // - modo single: rowIdx = rIdx, colIdx = rIdx*100+cIdx com localIdx 0-2
+  for(let r=0; r<etdrsRows.length; r++){
+    for(let c=0; c<5; c++){
+      const key = `${r}_${r*100+c}`;
+      let prev = c>0 ? symbolColorMap[`${r}_${r*100+c-1}`] : -1;
+      let idx; let tries=0;
+      do { idx=Math.floor(Math.random()*n); tries++; } while(idx===prev && tries<20);
+      symbolColorMap[key] = idx;
+    }
+    // Para modo single (localIdx 0,1,2 viram rIdx diferente):
+    for(let li=0; li<3; li++){
+      const fakeRow = r + li*100 + 1000; // índice fictício usado no single
+      for(let c=0; c<5; c++){
+        const key = `${fakeRow}_${fakeRow*100+c}`;
+        let prev = c>0 ? symbolColorMap[`${fakeRow}_${fakeRow*100+c-1}`] : -1;
+        let idx; let tries=0;
+        do { idx=Math.floor(Math.random()*n); tries++; } while(idx===prev && tries<20);
+        symbolColorMap[key] = idx;
+      }
+    }
+  }
+  // Gera também para o horizontal (rowIdx*10+lineIdx como rowIdx, cIdx como colIdx)
+  for(let r=0; r<etdrsRows.length; r++){
+    for(let li=0; li<3; li++){
+      const colorRow = r*10+li;
+      let prev=-1;
+      for(let c=0; c<5; c++){
+        const key=`${colorRow}_${c}`;
+        let idx; let tries=0;
+        do { idx=Math.floor(Math.random()*n); tries++; } while(idx===prev && tries<20);
+        symbolColorMap[key]=idx; prev=idx;
+      }
+    }
+  }
+}
+
+// Retorna o conjunto de símbolos conforme o tipo de conteúdo selecionado.
+function getSymbolPool(){
+  const ct = etContentTypeSel.value;
+  if(ct === 'numbers' || ct === 'numberscolor') return NUMBERS;
+  if(ct === 'colored') return COLORED_LETTERS;
+  if(ct === 'kidscolor' || ct === 'kids') return KIDS_SHAPES;
+  return SLOAN;
+}
+
+// Desenha objeto infantil estilo outline preto — fiel ao estilo dos testes pediátricos reais.
+// Desenha um objeto infantil estilo sticker — contorno branco espesso + sombra suave.
+// Usado tanto na versão preta quanto na colorida (a colorida passa a cor; a preta usa '#1a1a1a').
+function drawKidsSticker(ctx, shape, cx, cy, size, fillColor, outlineColor){
+  ctx.save();
+  ctx.translate(cx, cy);
+  const s = size * 0.44;
+  const border = Math.max(size * 0.065, 7);
+
+  // Para a flor, usamos lógica própria (pétalas + miolo)
+  if(shape === 'flower'){
+    const petalR = s * 0.38;
+    const mioloR = s * 0.30;
+    const petalDist = s * 0.50;
+    const nPetals = 6;
+
+    // Sombra no miolo
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.20)';
+    ctx.shadowBlur = size * 0.06;
+    ctx.shadowOffsetY = size * 0.04;
+    ctx.fillStyle = 'rgba(0,0,0,0.01)';
+    ctx.beginPath(); ctx.arc(0,0,mioloR+petalDist*0.8+border,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // Contorno branco das pétalas
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = border * 1.6;
+    for(let i=0;i<nPetals;i++){
+      const a = (Math.PI*2/nPetals)*i;
+      const px = Math.cos(a)*petalDist, py = Math.sin(a)*petalDist;
+      ctx.beginPath(); ctx.arc(px,py,petalR+border*0.4,0,Math.PI*2); ctx.stroke();
+    }
+
+    // Pétalas coloridas
+    ctx.fillStyle = fillColor;
+    for(let i=0;i<nPetals;i++){
+      const a = (Math.PI*2/nPetals)*i;
+      const px = Math.cos(a)*petalDist, py = Math.sin(a)*petalDist;
+      ctx.beginPath(); ctx.arc(px,py,petalR,0,Math.PI*2); ctx.fill();
+    }
+
+    // Contorno branco do miolo
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = border * 1.4;
+    ctx.beginPath(); ctx.arc(0,0,mioloR+border*0.3,0,Math.PI*2); ctx.stroke();
+
+    // Miolo amarelo/dourado
+    const mioloColor = fillColor === '#1a1a1a' ? '#888' : '#ffca28';
+    ctx.fillStyle = mioloColor;
+    ctx.beginPath(); ctx.arc(0,0,mioloR,0,Math.PI*2); ctx.fill();
+
+    ctx.restore();
+    return;
+  }
+
+  // ─── Formas simples (círculo, triângulo, quadrado, estrela) ───
+  function buildPath(){
+    if(shape === 'circle'){
+      ctx.beginPath(); ctx.arc(0, 0, s*0.88, 0, Math.PI*2);
+    } else if(shape === 'triangle'){
+      ctx.beginPath();
+      ctx.moveTo(0, -s*0.92);
+      ctx.lineTo(s*0.88, s*0.70);
+      ctx.lineTo(-s*0.88, s*0.70);
+      ctx.closePath();
+    } else if(shape === 'square'){
+      const r = s * 0.14;
+      ctx.beginPath();
+      ctx.roundRect(-s*0.88, -s*0.88, s*1.76, s*1.76, r);
+    } else if(shape === 'star'){
+      const pts = 5, outerR = s*0.92, innerR = s*0.38;
+      ctx.beginPath();
+      for(let i=0;i<pts*2;i++){
+        const r2 = i%2===0 ? outerR : innerR;
+        const a = (Math.PI/pts)*i - Math.PI/2;
+        if(i===0) ctx.moveTo(Math.cos(a)*r2, Math.sin(a)*r2);
+        else ctx.lineTo(Math.cos(a)*r2, Math.sin(a)*r2);
+      }
+      ctx.closePath();
+    }
+  }
+
+  // Sombra
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.22)';
+  ctx.shadowBlur = size * 0.06;
+  ctx.shadowOffsetY = size * 0.04;
+  ctx.fillStyle = 'rgba(0,0,0,0.01)';
+  buildPath(); ctx.fill();
+  ctx.restore();
+
+  // Contorno branco sticker
+  ctx.lineWidth = border * 2;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  buildPath(); ctx.stroke();
+
+  // Preenchimento
+  ctx.fillStyle = fillColor;
+  buildPath(); ctx.fill();
+
+  ctx.restore();
+}
+
+// Versão escura (preta) dos objetos infantis
+function drawKidsShape(ctx, shape, cx, cy, size){
+  drawKidsSticker(ctx, shape, cx, cy, size, '#1a1a1a', '#fff');
+}
+
+// Versão colorida dos objetos infantis — sticker com cor da paleta
+function drawKidsColorShape(ctx, shape, cx, cy, size, colorIdx){
+  const color = COLOR_PALETTE[colorIdx % COLOR_PALETTE.length];
+  drawKidsSticker(ctx, shape, cx, cy, size, color, '#fff');
+}
+
+// Escurece levemente uma cor hex para uso nos detalhes
+function darkenColor(hex){
+  try{
+    const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+    return `rgb(${Math.round(r*0.7)},${Math.round(g*0.7)},${Math.round(b*0.7)})`;
+  } catch(e){ return '#333'; }
+}
+
+// Desenha letra com cor aleatória (não por índice fixo) — usada pela tabela de letras coloridas.
+function currentFont(size){
+  let family = 'Arial, Helvetica, sans-serif';
+  try{ family = etFontSel.value || family; } catch(e){}
+  return `700 ${size}px ${family}`;
+}
+
+function drawColoredLetter(ctx, letter, cx, cy, size, colorIdx){
+  ctx.save();
+  ctx.fillStyle = COLOR_PALETTE[colorIdx % COLOR_PALETTE.length];
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = currentFont(size);
+  ctx.fillText(letter, cx, cy + size*0.04);
+  ctx.restore();
+}
+
+
+// logMAR-based decreasing sizes per row, feet notation (20/x), largest to smallest.
+// Tamanho real (px) é calculado dinamicamente via letterHeightPx() usando a calibração compartilhada.
+const etdrsRows = [
+  {denom:200, label:"20/200"},
+  {denom:160, label:"20/160"},
+  {denom:125, label:"20/125"},
+  {denom:100, label:"20/100"},
+  {denom:80,  label:"20/80"},
+  {denom:63,  label:"20/63"},
+  {denom:50,  label:"20/50"},
+  {denom:40,  label:"20/40"},
+  {denom:32,  label:"20/32"},
+  {denom:25,  label:"20/25"},
+  {denom:20,  label:"20/20"}
+];
+
+// No modo vertical, cada bloco mostra 3 linhas de tamanhos diferentes (colunas esquerda/âncora/direita).
+// No modo horizontal, cada bloco mostra 1 único tamanho, mas em 3 sub-linhas empilhadas (topo/âncora/base).
+function isHorizontal(){ return etOrientSel.value === 'horizontal'; }
+function isSingleLayout(){
+  // Horizontal: sempre tamanho único (sem decrescente)
+  if(isHorizontal()) return true;
+  // Vertical: depende do seletor
+  return etLayoutSel && etLayoutSel.value === 'single';
+}
+
+function getRowsPerBlock(){
+  if(isSingleLayout()) return 1;  // single (ambas orientações): 1 row por bloco
+  return 3;                        // decrescente (ambas orientações): 3 rows por bloco
+}
+function getTotalBlocks(){
+  return Math.ceil(etdrsRows.length / getRowsPerBlock());
+}
+function getCurrentBlockRows(){
+  const rowsPerBlock = getRowsPerBlock();
+  const startIdx = currentBlock * rowsPerBlock;
+  return etdrsRows.slice(startIdx, startIdx + rowsPerBlock);
+}
+function getCurrentStartIdx(){
+  return currentBlock * getRowsPerBlock();
+}
+
+// Mostra/esconde controles de layout conforme seleção
+function updateLayoutControls(){
+  const layoutLabel = document.getElementById('etdrs-layout-label');
+  const singleLabel = document.getElementById('etdrs-single-row-label');
+  // Seletor de layout só faz sentido no vertical
+  if(layoutLabel) layoutLabel.style.display = isHorizontal() ? 'none' : '';
+  if(singleLabel) singleLabel.style.display = 'none';
+}
+let currentBlock = 0;
+let isolatedRow = null; // null = mostra tudo; número = mostra só aquela linha do bloco atual
+
+let etdrsLetters = []; // vertical: per row [leftA, leftB, center, rightA, rightB]
+                        // horizontal: per row {top:[5], center:[5], bottom:[5]}
+
+function randomLetters(n){
+  const ct = etContentTypeSel.value;
+  const basePool = (ct === 'kids' || ct === 'kidscolor') ? [...KIDS_SHAPES]
+    : (ct === 'colored') ? [...COLORED_LETTERS]
+    : [...getSymbolPool()];
+  const pool = [...basePool];
+  const out = [];
+  const limit = Math.min(n, pool.length);
+  for(let i=0;i<limit;i++){
+    const idx = Math.floor(Math.random()*pool.length);
+    out.push(pool[idx]);
+    pool.splice(idx,1);
+  }
+  while(out.length < n){
+    out.push(basePool[Math.floor(Math.random()*basePool.length)]);
+  }
+  return out;
+}
+
+function generateEtdrsLetters(){
+  generateColorMap();
+  if(etOrientSel.value === 'horizontal'){
+    // Horizontal: cada row tem 3 sub-linhas independentes {top, center, bottom}
+    etdrsLetters = etdrsRows.map(()=> ({
+      top: randomLetters(5),
+      center: randomLetters(5),
+      bottom: randomLetters(5)
+    }));
+  } else {
+    // Vertical: cada row tem 5 letras
+    etdrsLetters = etdrsRows.map(()=> randomLetters(5));
+    // Vertical single: gera 3 conjuntos extras com letras diferentes para as 3 fileiras
+    if(isSingleLayout()){
+      etdrsRows.forEach((_, rowIdx)=>{
+        for(let fi=0;fi<3;fi++){
+          etdrsLetters[`single_${rowIdx}_${fi}`] = randomLetters(5);
+        }
+      });
+    }
+  }
+}
+
+// colorIdx é a posição da coluna/elemento; rowIdx é a linha — usados para gerar cor única por posição
+function drawSloanLetter(ctx, letter, cx, cy, size, color, colorIdx, rowIdx){
+  const ct = etContentTypeSel.value;
+  if(ct === 'kids'){
+    drawKidsShape(ctx, letter, cx, cy, size);
+    return;
+  }
+  if(ct === 'kidscolor'){
+    const ci = getColorForPosition(rowIdx||0, colorIdx||0);
+    drawKidsColorShape(ctx, letter, cx, cy, size, ci);
+    return;
+  }
+  if(ct === 'colored' || ct === 'numberscolor'){
+    // Cor aleatória por posição — não sequencial
+    const ci = getColorForPosition(rowIdx||0, colorIdx||0);
+    drawColoredLetter(ctx, letter, cx, cy, size, ci);
+    return;
+  }
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = currentFont(size);
+  ctx.fillText(letter, cx, cy + size*0.04);
+  ctx.restore();
+}
+
+// Build one full-eye canvas (either 'left' or 'right' perspective) plus a flat/reference version,
+// showing only the rows in the current block. Suporta orientação vertical (colunas) ou horizontal (linhas empilhadas).
+function buildEtdrsEyeCanvas(eye, bgColor){
+  const c = document.createElement('canvas');
+  c.width = EW; c.height = EH;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = bgColor || '#fff';
+  ctx.fillRect(0,0,EW,EH);
+
+  const orientation = etOrientSel.value;
+  const rowsPerBlock = getRowsPerBlock();
+  const startIdx = getCurrentStartIdx();
+  const blockRows = getCurrentBlockRows();
+
+  if(orientation === 'horizontal'){
+    const marginTop = EH * 0.06;
+    const marginBottom = EH * 0.04;
+    const centerX = EW * 0.5;
+    const numRows = blockRows.length; // 1 no single, 3 no decrescente
+    // Cada row ocupa 1/numRows da tela, dividido em 3 sub-linhas internas
+    const rowSlotH = (EH - marginTop - marginBottom) / numRows;
+
+    blockRows.forEach((row, localIdx)=>{
+      const rIdx = startIdx + localIdx;
+      // Garante formato {top, center, bottom} mesmo se etdrsLetters foi gerado em modo vertical
+      const rawLetters = etdrsLetters[rIdx];
+      const letters = (rawLetters && rawLetters.center)
+        ? rawLetters
+        : { top: randomLetters(5), center: rawLetters || randomLetters(5), bottom: randomLetters(5) };
+      const sizeReal = letterHeightPx(row.denom);
+      // No decrescente (numRows>1), limita a altura da letra para caber em cada sub-linha com margem
+      const subGap = rowSlotH / 3;
+      const maxSize = subGap * 0.68; // letra ocupa 68% do slot para ter espaço entre sub-linhas
+      const size = Math.min(sizeReal, maxSize);
+      const gap = size * 1.35;
+      const colX = [centerX-gap*2, centerX-gap, centerX, centerX+gap, centerX+gap*2];
+      const slotTop = marginTop + localIdx * rowSlotH;
+      const lines = [
+        {key:'top',    cy: slotTop + subGap*0 + subGap/2, visible: (eye==='right' || eye==='flat')},
+        {key:'center', cy: slotTop + subGap*1 + subGap/2, visible: true},
+        {key:'bottom', cy: slotTop + subGap*2 + subGap/2, visible: (eye==='left' || eye==='flat')}
+      ];
+
+      // Label do tamanho à esquerda, no topo do slot
+      ctx.save();
+      ctx.fillStyle = (bgColor && bgColor !== '#fff') ? '#000' : '#555';
+      ctx.font = `${Math.max(14, Math.round(size * 0.35))}px Arial`;
+      ctx.textAlign = 'left';
+      ctx.fillText(row.label, 10, slotTop + subGap * 0.4);
+      ctx.restore();
+
+      // Linha separadora entre rows (apenas no decrescente, não na última)
+      if(numRows > 1 && localIdx < numRows - 1){
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, slotTop + rowSlotH);
+        ctx.lineTo(EW, slotTop + rowSlotH);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      lines.forEach((line, lineIdx)=>{
+        if(!line.visible) return;
+        // Isolamento total: mostra APENAS a linha isolada
+        if(isolatedRow !== null && lineIdx !== isolatedRow) return;
+        const color = (line.key==='center') ? '#000' : (eye==='flat' ? '#000' : '#111');
+        const colorRowIdx = rIdx * 10 + lineIdx;
+        letters[line.key].forEach((letter, cIdx)=>{
+          drawSloanLetter(ctx, letter, colX[cIdx], line.cy, size, color, cIdx, colorRowIdx);
+        });
+      });
+    });
+
+    return c;
+  }
+
+  // Orientação vertical (padrão): colunas esquerda/âncora/direita dentro de cada linha
+  const marginTop = EH * 0.08;
+  const marginBottom = EH * 0.06;
+
+  // No modo single+vertical: replica o mesmo tamanho 3 vezes mas com letras DIFERENTES em cada fileira
+  // Para isso, usamos índices fictícios (startIdx, startIdx+100, startIdx+200) que geram cores diferentes,
+  // e sorteamos letras independentes para cada fileira no próprio etdrsLetters (expandido em generateEtdrsLetters)
+  const displayRows = isSingleLayout() && blockRows.length === 1
+    ? [blockRows[0], blockRows[0], blockRows[0]]
+    : blockRows;
+  const rowGap = (EH - marginTop - marginBottom) / Math.max(displayRows.length, 3);
+  const centerX = EW * 0.5;
+
+  displayRows.forEach((row, localIdx)=>{
+    if(isolatedRow !== null && localIdx !== isolatedRow) return;
+    const rIdx = startIdx; // tamanho base
+    // Para letras únicas por fileira no single: usa índice estendido no etdrsLetters
+    const lettersIdx = isSingleLayout()
+      ? `single_${rIdx}_${localIdx}`
+      : rIdx + localIdx;
+    const letters = etdrsLetters[lettersIdx] || etdrsLetters[rIdx];
+    const cy = marginTop + rowGap*localIdx + rowGap/2;
+    const size = letterHeightPx(row.denom);
+
+    // Column spacing scales with this row's letter size so large rows don't crowd
+    const gap = size * 1.35;
+    const colX = [
+      centerX - gap*2,
+      centerX - gap,
+      centerX,
+      centerX + gap,
+      centerX + gap*2
+    ];
+
+    // label (feet notation) — tamanho proporcional à letra da linha
+    ctx.save();
+    ctx.fillStyle = (bgColor && bgColor !== '#fff') ? '#000' : '#555';
+    const labelSize = Math.max(18, Math.min(size * 0.38, 48));
+    ctx.font = `${Math.round(labelSize)}px Arial`;
+    ctx.textAlign = 'left';
+    ctx.fillText(row.label, 10, cy+6);
+    ctx.restore();
+
+    // positions: 0,1 = left side of screen -> right eye (convenção Thomson, cruzada) ; 2 = center/binocular ; 3,4 = right side of screen -> left eye
+    letters.forEach((letter, cIdx)=>{
+      let visible = true;
+      let color = '#000';
+      if(cIdx===0 || cIdx===1){
+        visible = (eye==='right' || eye==='flat');
+        color = eye==='flat' ? '#000' : '#111';
+      } else if(cIdx===3 || cIdx===4){
+        visible = (eye==='left' || eye==='flat');
+        color = eye==='flat' ? '#000' : '#111';
+      } else {
+        visible = true; // center always drawn in both eyes -> binocular
+        color = '#000';
+      }
+      if(visible){
+        // Usa rIdx*100+cIdx como colorIdx único por célula — garante cor diferente em cada posição
+        drawSloanLetter(ctx, letter, colX[cIdx], cy, size, color, cIdx, rIdx * 10 + localIdx);
+      }
+    });
+  });
+
+  return c;
+}
+
+function renderEtdrs(){
+  const mode = etModeSel.value;
+  const orientation = etOrientSel.value;
+  const rowsPerBlock = getRowsPerBlock();
+  const totalBlocks = getTotalBlocks();
+  const isVergence = (etContentTypeSel.value === 'vergence');
+
+  document.getElementById('etdrs-canvas-wrap').classList.toggle('sbs-active', mode === 'sbs');
+  // Fundo preto: ativo quando o teste de vergência usa a figura Worth
+  const isWorth = (isVergence && vergShapeSel.value === 'worth');
+  document.getElementById('etdrs-canvas-wrap').classList.toggle('dark-bg', isWorth);
+  etSbsAlignControls.style.display = (mode === 'sbs' && !isVergence) ? 'flex' : 'none';
+  // Botões de ajuste fino SBS (calibração de tela) só aparecem no modo Letras — no modo Vergência,
+  // o mesmo alinhamento SBS já foi calibrado antes e não precisa de controle repetido aqui.
+  const showSbsBtns = (mode === 'sbs') && !isVergence;
+  document.getElementById('etdrs-fs-sbs-up').style.display = showSbsBtns ? 'inline-block' : 'none';
+  document.getElementById('etdrs-fs-sbs-down').style.display = showSbsBtns ? 'inline-block' : 'none';
+  document.getElementById('etdrs-fs-sbs-left').style.display = showSbsBtns ? 'inline-block' : 'none';
+  document.getElementById('etdrs-fs-sbs-right').style.display = showSbsBtns ? 'inline-block' : 'none';
+
+  // Toggle de painéis específicos do modo Vergência (esconde estrutura de letras/blocos, que não se aplica aqui)
+  vergPanel.style.display = isVergence ? 'block' : 'none';
+  document.getElementById('etdrs-block-nav').style.display = isVergence ? 'none' : 'flex';
+  etLegendVertical.classList.toggle('hidden', isVergence || orientation !== 'vertical');
+  etLegendHorizontal.classList.toggle('hidden', isVergence || orientation !== 'horizontal');
+  document.getElementById('verg-fs-up').style.display = isVergence ? 'inline-block' : 'none';
+  document.getElementById('verg-fs-down').style.display = isVergence ? 'inline-block' : 'none';
+  document.getElementById('verg-fs-left').style.display = isVergence ? 'inline-block' : 'none';
+  document.getElementById('verg-fs-right').style.display = isVergence ? 'inline-block' : 'none';
+  document.getElementById('verg-fs-reset').style.display = isVergence ? 'inline-block' : 'none';
+  document.getElementById('verg-fs-shape').style.display = isVergence ? 'inline-block' : 'none';
+  // Esconde controles que só fazem sentido no modo letras
+  etRedrawBtn.style.display = isVergence ? 'none' : 'inline-block';
+  document.getElementById('etdrs-fs-redraw').style.display = isVergence ? 'none' : 'inline-block';
+
+  if(isVergence){
+    renderVergence();
+    return;
+  }
+
+  if(mode === 'flat'){
+    const flatCanvas = buildEtdrsEyeCanvas('flat');
+    etctx.clearRect(0,0,EW,EH);
+    etctx.drawImage(flatCanvas,0,0);
+  } else if(mode === 'channel'){
+    etctx.clearRect(0,0,EW,EH);
+
+    const startIdx = getCurrentStartIdx();
+    const blockRows = getCurrentBlockRows();
+    const centerX = EW * 0.5;
+
+    if(orientation === 'horizontal'){
+      // Tinge cada sub-linha (topo/base) com a cor do canal correspondente
+      etctx.fillStyle = '#fff';
+      etctx.fillRect(0,0,EW,EH);
+
+      const marginTop = EH * 0.08;
+      const marginBottom = EH * 0.06;
+      const lineGap = (EH - marginTop - marginBottom) / 3;
+
+      blockRows.forEach((row)=>{
+        const letters = etdrsLetters[startIdx];
+        const size = letterHeightPx(row.denom);
+        const gap = size * 1.35;
+        const colX = [centerX-gap*2, centerX-gap, centerX, centerX+gap, centerX+gap*2];
+
+        etctx.fillStyle = '#0dbf1f';
+        etctx.fillRect(0, marginTop, EW, lineGap);
+        etctx.fillStyle = '#ff3300';
+        etctx.fillRect(0, marginTop + lineGap*2, EW, lineGap);
+
+        etctx.save();
+        etctx.fillStyle = '#000';
+        etctx.font = '18px Arial';
+        etctx.textAlign = 'left';
+        etctx.fillText(row.label, 10, marginTop + lineGap/2 + 6);
+        etctx.restore();
+
+        const lines = [
+          {key:'top',    cy: marginTop + lineGap*0 + lineGap/2},
+          {key:'center', cy: marginTop + lineGap*1 + lineGap/2},
+          {key:'bottom', cy: marginTop + lineGap*2 + lineGap/2}
+        ];
+        lines.forEach(line=>{
+          letters[line.key].forEach((letter, cIdx)=>{
+            drawSloanLetter(etctx, letter, colX[cIdx], line.cy, size, '#000');
+          });
+        });
+      });
+    } else {
+      // Fundo dividido: metade esquerda verde (canal que, no modo entrelaçado, vai para o olho direito),
+      // metade direita vermelha (canal que vai para o olho esquerdo) — convenção cruzada, como no Thomson Test Chart.
+      etctx.fillStyle = '#0dbf1f';
+      etctx.fillRect(0,0,EW/2,EH);
+      etctx.fillStyle = '#ff3300';
+      etctx.fillRect(EW/2,0,EW/2,EH);
+
+      const marginTop = EH * 0.08;
+      const marginBottom = EH * 0.06;
+      const rowGap = (EH - marginTop - marginBottom) / rowsPerBlock;
+
+      blockRows.forEach((row, localIdx)=>{
+        const rIdx = startIdx + localIdx;
+        const cy = marginTop + rowGap*localIdx + rowGap/2;
+        const letters = etdrsLetters[rIdx];
+        const size = letterHeightPx(row.denom);
+        const gap = size * 1.35;
+        const colX = [centerX-gap*2, centerX-gap, centerX, centerX+gap, centerX+gap*2];
+
+        etctx.save();
+        etctx.fillStyle = '#000';
+        etctx.font = '18px Arial';
+        etctx.textAlign = 'left';
+        etctx.fillText(row.label, 10, cy+6);
+        etctx.restore();
+
+        letters.forEach((letter, cIdx)=>{
+          drawSloanLetter(etctx, letter, colX[cIdx], cy, size, '#000');
+        });
+      });
+    }
+  } else if(mode === 'sbs'){
+    // Side by Side: cada olho ocupa metade da tela, comprimido horizontalmente.
+    // A própria TV expande cada metade de volta ao tamanho cheio e faz a separação por polarização.
+    // Convenção Thomson (cruzada): metade esquerda da tela = olho direito, metade direita = olho esquerdo.
+    // sbsVerticalOffset/sbsHorizontalOffset compensam desalinhamento físico entre as duas metades, causado pela TV/painel 3D.
+    const leftCanvas = buildEtdrsEyeCanvas('left');
+    const rightCanvas = buildEtdrsEyeCanvas('right');
+    etctx.clearRect(0,0,EW,EH);
+    etctx.drawImage(rightCanvas, 0, 0, EW, EH, 0, 0, EW/2, EH);
+    etctx.drawImage(leftCanvas,  0, 0, EW, EH, EW/2 + sbsHorizontalOffset, sbsVerticalOffset, EW/2, EH);
+  } else {
+    // interlace
+    const leftCanvas = buildEtdrsEyeCanvas('left');
+    const rightCanvas = buildEtdrsEyeCanvas('right');
+    const leftData = leftCanvas.getContext('2d').getImageData(0,0,EW,EH);
+    const rightData = rightCanvas.getContext('2d').getImageData(0,0,EW,EH);
+    const out = etctx.createImageData(EW,EH);
+
+    for(let y=0;y<EH;y++){
+      const src = (y % 2 === 0) ? leftData : rightData;
+      const rowStart = y*EW*4;
+      for(let x=0;x<EW*4;x++){
+        out.data[rowStart+x] = src.data[rowStart+x];
+      }
+    }
+    etctx.putImageData(out,0,0);
+  }
+
+  const sIdx = getCurrentStartIdx();
+  const blockRows2 = getCurrentBlockRows();
+  const endIdx2 = sIdx + blockRows2.length - 1;
+  const firstLabel = etdrsRows[sIdx] ? etdrsRows[sIdx].label : '';
+  const lastLabel  = etdrsRows[endIdx2] ? etdrsRows[endIdx2].label : firstLabel;
+  const isSingleLayout = etLayoutSel && etLayoutSel.value === 'single';
+  const rangeLabel = isSingleLayout
+    ? firstLabel
+    : (firstLabel === lastLabel ? firstLabel : `${firstLabel} — ${lastLabel}`);
+  const blockInfo = isSingleLayout ? '' : `  (bloco ${currentBlock+1}/${totalBlocks})`;
+  etBlockLabel.textContent = `${rangeLabel}${blockInfo} · ${currentCalibrationLabel()}`;
+  etPrevBtn.disabled = isSingleLayout ? false : currentBlock === 0;
+  etNextBtn.disabled = isSingleLayout ? false : currentBlock === totalBlocks - 1;
+}
+
+etRedrawBtn.addEventListener('click', ()=>{
+  generateEtdrsLetters();
+  renderEtdrs();
+});
+etModeSel.addEventListener('change', renderEtdrs);
+etContentTypeSel.addEventListener('change', ()=>{
+  currentBlock = 0;
+  generateEtdrsLetters();
+  renderEtdrs();
+});
+etFontSel.addEventListener('change', renderEtdrs);
+etOrientSel.addEventListener('change', ()=>{
+  currentBlock = 0; isolatedRow = null;
+  updateLayoutControls();
+  generateEtdrsLetters(); renderEtdrs();
+});
+
+// Listener do novo seletor de layout (só ativo no vertical)
+etLayoutSel.addEventListener('change', ()=>{
+  currentBlock = 0; isolatedRow = null;
+  updateLayoutControls();
+  generateEtdrsLetters(); renderEtdrs();
+});
+
+// Listener do seletor de tamanho específico (modo single+vertical)
+etSingleRowSel.addEventListener('change', ()=>{
+  generateEtdrsLetters(); renderEtdrs();
+});
+etPrevBtn.addEventListener('click', navigatePrev);
+etNextBtn.addEventListener('click', navigateNext);
+
+function navigatePrev(){
+  if(currentBlock > 0){ currentBlock--; renderEtdrs(); } // mantém isolatedRow ao navegar
+}
+function navigateNext(){
+  if(currentBlock < getTotalBlocks()-1){ currentBlock++; renderEtdrs(); } // mantém isolatedRow ao navegar
+}
+calDiagInput.addEventListener('change', renderEtdrs);
+calResInput.addEventListener('change', renderEtdrs);
+calDistInput.addEventListener('change', renderEtdrs);
+
+// ─── LONG PRESS: isola a fileira pressionada (funciona em tela cheia) ───
+// Pressionar e segurar (~500ms) numa linha: mostra só aquela linha.
+// Pressionar e segurar na mesma linha de novo: volta ao normal.
+// O isolamento PERSISTE ao navegar com ◀▶ ou swipe.
+let etLongPressTimer = null;
+let etLongPressStart = null;
+let etLongPressCurrent = null;
+let suppressNextTap = false; // evita que o soltar do long press conte como toque
+
+function getEtdrsTouchedRow(clientY){
+  const h = window.innerHeight;
+  const relY = clientY / h;
+  const row = Math.floor(relY * 3);
+  return Math.max(0, Math.min(row, 2));
+}
+
+document.addEventListener('touchstart', (e)=>{
+  const isEtdrsTab = !document.getElementById('tab-etdrs').classList.contains('hidden');
+  if(!isEtdrsTab) return;
+  if(etContentTypeSel.value === 'vergence') return;
+  if(e.target.closest('button') || e.target.closest('select')) return;
+
+  const touch = e.touches[0];
+  etLongPressStart = {x: touch.clientX, y: touch.clientY};
+  etLongPressCurrent = {x: touch.clientX, y: touch.clientY};
+  if(etLongPressTimer) clearTimeout(etLongPressTimer);
+  etLongPressTimer = setTimeout(()=>{
+    etLongPressTimer = null;
+    // Decide no momento do disparo: se o dedo se moveu muito (é um swipe), não isola
+    const moved = etLongPressStart && etLongPressCurrent &&
+      (Math.abs(etLongPressCurrent.x - etLongPressStart.x) > 50 ||
+       Math.abs(etLongPressCurrent.y - etLongPressStart.y) > 50);
+    if(moved) return;
+    const row = getEtdrsTouchedRow(etLongPressStart.y);
+    if(isolatedRow === row){
+      isolatedRow = null;
+    } else {
+      isolatedRow = row;
+    }
+    if(navigator.vibrate) navigator.vibrate(40);
+    suppressNextTap = true; // o touchend deste gesto não deve contar como tap
+    renderEtdrs();
+  }, 420);
+}, {passive:true});
+
+document.addEventListener('touchend', ()=>{
+  if(etLongPressTimer){ clearTimeout(etLongPressTimer); etLongPressTimer=null; }
+}, {passive:true});
+
+document.addEventListener('touchmove', (e)=>{
+  // Apenas rastreia a posição atual; a decisão de cancelar é feita no disparo do timer
+  if(etLongPressStart && e.touches[0]){
+    etLongPressCurrent = {x: e.touches[0].clientX, y: e.touches[0].clientY};
+  }
+}, {passive:true});
+
+let sbsSaveTimeout = null;
+function updateSbsLabelsAndSave(){
+  etSbsVLabel.textContent = sbsVerticalOffset + 'px';
+  etSbsHLabel.textContent = sbsHorizontalOffset + 'px';
+  const ok = saveCalibration();
+  etSbsSavedIndicator.textContent = ok ? '✓ Salvo' : '';
+  if(sbsSaveTimeout) clearTimeout(sbsSaveTimeout);
+  sbsSaveTimeout = setTimeout(()=>{ etSbsSavedIndicator.textContent = ''; }, 1500);
+}
+
+function adjustSbsVertical(delta){
+  sbsVerticalOffset += delta;
+  updateSbsLabelsAndSave();
+  renderEtdrs();
+}
+function adjustSbsHorizontal(delta){
+  sbsHorizontalOffset += delta;
+  updateSbsLabelsAndSave();
+  renderEtdrs();
+}
+
+etSbsUpBtn.addEventListener('click', ()=> adjustSbsVertical(-5));
+etSbsDownBtn.addEventListener('click', ()=> adjustSbsVertical(5));
+etSbsLeftBtn.addEventListener('click', ()=> adjustSbsHorizontal(-5));
+etSbsRightBtn.addEventListener('click', ()=> adjustSbsHorizontal(5));
+etSbsResetBtn.addEventListener('click', ()=>{
+  sbsVerticalOffset = 0;
+  sbsHorizontalOffset = 0;
+  updateSbsLabelsAndSave();
+  renderEtdrs();
+});
+document.getElementById('etdrs-fs-sbs-up').addEventListener('click', ()=> adjustSbsVertical(-5));
+document.getElementById('etdrs-fs-sbs-down').addEventListener('click', ()=> adjustSbsVertical(5));
+document.getElementById('etdrs-fs-sbs-left').addEventListener('click', ()=> adjustSbsHorizontal(-5));
+document.getElementById('etdrs-fs-sbs-right').addEventListener('click', ()=> adjustSbsHorizontal(5));
+
+// Restaura labels com o valor carregado do localStorage ao iniciar (sem salvar de novo)
+etSbsVLabel.textContent = sbsVerticalOffset + 'px';
+etSbsHLabel.textContent = sbsHorizontalOffset + 'px';
+
+/* ================= TESTE DE VERGÊNCIA / FORIA (objeto móvel) ================= */
+const vergPanel = document.getElementById('vergence-panel');
+const vergObjectModeSel = document.getElementById('verg-object-mode');
+const vergShapeSel = document.getElementById('verg-shape');
+const vergStepSel = document.getElementById('verg-step');
+const vergUpBtn = document.getElementById('verg-up');
+const vergDownBtn = document.getElementById('verg-down');
+const vergLeftBtn = document.getElementById('verg-left');
+const vergRightBtn = document.getElementById('verg-right');
+const vergResetBtn = document.getElementById('verg-reset');
+const vergVLabel = document.getElementById('verg-v-label');
+const vergHLabel = document.getElementById('verg-h-label');
+
+// Deslocamento do objeto do olho esquerdo em relação ao centro (o do olho direito fica fixo no centro).
+// Positivo = direita/baixo, negativo = esquerda/cima.
+let vergOffsetX = 0;
+let vergOffsetY = 0;
+
+// Desenha uma figura ilustrada (não apenas silhueta), com gradiente, sombra suave e contorno,
+// no estilo "ícone flat colorido". Se useColor=false, força tudo em preto sólido (usado no modo
+// "Sem dissociação"/referência onde queremos alto contraste sem depender de cor).
+function drawShape(ctx, shape, cx, cy, size, useColor){
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Sombra suave no "chão" do objeto, dá sensação de volume/profundidade
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(size*0.02, size*0.40, size*0.32, size*0.07, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  function grad(x0,y0,x1,y1,c0,c1){
+    if(!useColor) return '#000';
+    const g = ctx.createLinearGradient(x0,y0,x1,y1);
+    g.addColorStop(0,c0); g.addColorStop(1,c1);
+    return g;
+  }
+  const outline = useColor ? 'rgba(0,0,0,0.25)' : '#000';
+
+  if(shape === 'bird'){
+    ctx.lineWidth = Math.max(2, size*0.025);
+    // Asa (atrás do corpo)
+    ctx.save();
+    ctx.fillStyle = useColor ? '#e8871e' : '#000';
+    ctx.beginPath();
+    ctx.moveTo(-size*0.02, -size*0.02);
+    ctx.quadraticCurveTo(-size*0.18, -size*0.32, -size*0.42, -size*0.12);
+    ctx.quadraticCurveTo(-size*0.16, -size*0.02, -size*0.02, size*0.10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Corpo
+    ctx.save();
+    ctx.fillStyle = grad(-size*0.3,-size*0.25,size*0.3,size*0.25,'#ffd23f','#f7931e');
+    ctx.beginPath();
+    ctx.ellipse(0, 0.02*size, size*0.34, size*0.24, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Cabeça
+    ctx.save();
+    ctx.fillStyle = grad(size*0.15,-size*0.24,size*0.45,size*0.05,'#4fc3f7','#0288d1');
+    ctx.beginPath();
+    ctx.arc(size*0.30, -size*0.10, size*0.17, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Bico
+    ctx.save();
+    ctx.fillStyle = useColor ? '#ff7043' : '#000';
+    ctx.beginPath();
+    ctx.moveTo(size*0.44, -size*0.10);
+    ctx.lineTo(size*0.60, -size*0.04);
+    ctx.lineTo(size*0.44, size*0.02);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Olho
+    ctx.save();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(size*0.35, -size*0.13, size*0.045, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath(); ctx.arc(size*0.365, -size*0.13, size*0.022, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    // Crista
+    if(useColor){
+      ctx.save();
+      ctx.fillStyle = '#ff7043';
+      ctx.beginPath();
+      ctx.moveTo(size*0.20,-size*0.25); ctx.lineTo(size*0.26,-size*0.36); ctx.lineTo(size*0.30,-size*0.24);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  } else if(shape === 'boat'){
+    ctx.lineWidth = Math.max(2, size*0.025);
+    // Água
+    if(useColor){
+      ctx.save();
+      ctx.fillStyle = 'rgba(79,195,247,0.35)';
+      ctx.beginPath();
+      ctx.moveTo(-size*0.5, size*0.32);
+      ctx.quadraticCurveTo(-size*0.25, size*0.26, 0, size*0.32);
+      ctx.quadraticCurveTo(size*0.25, size*0.38, size*0.5, size*0.32);
+      ctx.lineTo(size*0.5, size*0.5); ctx.lineTo(-size*0.5, size*0.5);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    // Casco
+    ctx.save();
+    ctx.fillStyle = grad(-size*0.4,size*0.1,size*0.4,size*0.3,'#8d6e63','#5d4037');
+    ctx.beginPath();
+    ctx.moveTo(-size*0.44, size*0.06);
+    ctx.lineTo(size*0.44, size*0.06);
+    ctx.lineTo(size*0.30, size*0.28);
+    ctx.lineTo(-size*0.30, size*0.28);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Mastro
+    ctx.save();
+    ctx.strokeStyle = useColor ? '#6d4c41' : '#000';
+    ctx.lineWidth = Math.max(3, size*0.035);
+    ctx.beginPath();
+    ctx.moveTo(0, size*0.06); ctx.lineTo(0, -size*0.56);
+    ctx.stroke();
+    ctx.restore();
+    // Vela grande
+    ctx.save();
+    ctx.fillStyle = grad(0,-size*0.5,size*0.4,-size*0.1,'#ffffff','#e3f2fd');
+    ctx.beginPath();
+    ctx.moveTo(size*0.02, -size*0.52);
+    ctx.quadraticCurveTo(size*0.38, -size*0.30, size*0.02, -size*0.08);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Vela pequena
+    ctx.save();
+    ctx.fillStyle = grad(-size*0.28,-size*0.36,0,-size*0.10,'#ffca28','#ffa000');
+    ctx.beginPath();
+    ctx.moveTo(-size*0.02, -size*0.38);
+    ctx.quadraticCurveTo(-size*0.24, -size*0.22, -size*0.02, -size*0.08);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Bandeirinha
+    if(useColor){
+      ctx.save();
+      ctx.fillStyle = '#e53935';
+      ctx.beginPath();
+      ctx.moveTo(0,-size*0.56); ctx.lineTo(size*0.12,-size*0.52); ctx.lineTo(0,-size*0.48);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  } else if(shape === 'ball'){
+    ctx.lineWidth = Math.max(2, size*0.02);
+    ctx.save();
+    ctx.fillStyle = grad(-size*0.3,-size*0.3,size*0.3,size*0.3, useColor ? '#66bb6a' : '#fff', useColor ? '#2e7d32' : '#000');
+    ctx.beginPath();
+    ctx.arc(0, 0, size*0.38, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Gomos estilo bola de futebol/vôlei
+    ctx.save();
+    ctx.strokeStyle = useColor ? 'rgba(255,255,255,0.85)' : '#fff';
+    ctx.lineWidth = Math.max(2, size*0.025);
+    ctx.beginPath();
+    ctx.moveTo(-size*0.34, -size*0.10); ctx.quadraticCurveTo(0,size*0.10, size*0.34,-size*0.10);
+    ctx.moveTo(-size*0.34, size*0.14); ctx.quadraticCurveTo(0,-size*0.06, size*0.34,size*0.14);
+    ctx.stroke();
+    ctx.restore();
+    // Brilho
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath();
+    ctx.ellipse(-size*0.13,-size*0.15, size*0.09, size*0.05, -0.5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  } else if(shape === 'star'){
+    const spikes = 5, outerR = size*0.42, innerR = size*0.18;
+    ctx.save();
+    ctx.fillStyle = grad(-outerR,-outerR,outerR,outerR, useColor ? '#ffee58' : '#fff', useColor ? '#f9a825' : '#000');
+    ctx.lineWidth = Math.max(2, size*0.025);
+    ctx.beginPath();
+    for(let i=0;i<spikes*2;i++){
+      const r = (i%2===0) ? outerR : innerR;
+      const angle = (Math.PI/spikes)*i - Math.PI/2;
+      const x = Math.cos(angle)*r, y = Math.sin(angle)*r;
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Brilho central
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath(); ctx.arc(-size*0.05,-size*0.05,size*0.06,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  } else if(shape === 'dog'){
+    ctx.lineWidth = Math.max(2, size*0.025);
+    // Orelhas
+    ctx.save();
+    ctx.fillStyle = useColor ? '#8d5a2b' : '#000';
+    ctx.beginPath();
+    ctx.ellipse(-size*0.30, -size*0.20, size*0.10, size*0.18, -0.4, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(size*0.30, -size*0.20, size*0.10, size*0.18, 0.4, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    // Cabeça
+    ctx.save();
+    ctx.fillStyle = grad(-size*0.3,-size*0.3,size*0.3,size*0.3, useColor ? '#f2c185' : '#fff', useColor ? '#d19a5f' : '#ddd');
+    ctx.beginPath();
+    ctx.arc(0, -size*0.02, size*0.32, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Focinho
+    ctx.save();
+    ctx.fillStyle = useColor ? '#fff3e0' : '#fff';
+    ctx.beginPath();
+    ctx.ellipse(0, size*0.14, size*0.16, size*0.12, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Nariz
+    ctx.save();
+    ctx.fillStyle = '#3e2723';
+    ctx.beginPath();
+    ctx.ellipse(0, size*0.08, size*0.05, size*0.035, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    // Olhos
+    ctx.save();
+    ctx.fillStyle = '#3e2723';
+    ctx.beginPath(); ctx.arc(-size*0.12,-size*0.05,size*0.035,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(size*0.12,-size*0.05,size*0.035,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-size*0.105,-size*0.06,size*0.012,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(size*0.135,-size*0.06,size*0.012,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+    // Língua
+    if(useColor){
+      ctx.save();
+      ctx.fillStyle = '#ef5350';
+      ctx.beginPath();
+      ctx.ellipse(0, size*0.24, size*0.05, size*0.08, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+  } else if(shape === 'car'){
+    ctx.lineWidth = Math.max(2, size*0.025);
+    // Corpo
+    ctx.save();
+    ctx.fillStyle = grad(-size*0.4,-size*0.1,size*0.4,size*0.2, useColor ? '#ef5350' : '#fff', useColor ? '#c62828' : '#ddd');
+    ctx.beginPath();
+    ctx.moveTo(-size*0.45, size*0.12);
+    ctx.lineTo(-size*0.40, -size*0.02);
+    ctx.quadraticCurveTo(-size*0.30,-size*0.20,-size*0.10,-size*0.20);
+    ctx.lineTo(size*0.12,-size*0.20);
+    ctx.quadraticCurveTo(size*0.30,-size*0.20,size*0.38,-size*0.02);
+    ctx.lineTo(size*0.45, size*0.12);
+    ctx.quadraticCurveTo(size*0.45,size*0.22,size*0.35,size*0.22);
+    ctx.lineTo(-size*0.35,size*0.22);
+    ctx.quadraticCurveTo(-size*0.45,size*0.22,-size*0.45,size*0.12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    ctx.restore();
+    // Janela
+    ctx.save();
+    ctx.fillStyle = useColor ? '#bbdefb' : '#fff';
+    ctx.beginPath();
+    ctx.moveTo(-size*0.27,-size*0.03);
+    ctx.quadraticCurveTo(-size*0.20,-size*0.15,-size*0.08,-size*0.15);
+    ctx.lineTo(size*0.10,-size*0.15);
+    ctx.quadraticCurveTo(size*0.22,-size*0.15,size*0.28,-size*0.03);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = outline; ctx.stroke();
+    // divisória
+    ctx.beginPath(); ctx.moveTo(size*0.01,-size*0.15); ctx.lineTo(size*0.01,-size*0.03); ctx.stroke();
+    ctx.restore();
+    // Rodas
+    ctx.save();
+    ctx.fillStyle = '#212121';
+    ctx.beginPath(); ctx.arc(-size*0.26, size*0.22, size*0.10, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(size*0.26, size*0.22, size*0.10, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#9e9e9e';
+    ctx.beginPath(); ctx.arc(-size*0.26, size*0.22, size*0.045, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(size*0.26, size*0.22, size*0.045, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+    // Farol
+    if(useColor){
+      ctx.save();
+      ctx.fillStyle = '#fff59d';
+      ctx.beginPath(); ctx.arc(size*0.41, size*0.06, size*0.035, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+  } else if(shape === 'dots'){
+    // Padrão de 3 círculos coloridos (inspirado em teste de fusão tipo Worth simplificado): vermelho, verde, branco
+    const r = size*0.16;
+    const positions = [
+      {x:0, y:-size*0.30, c:'#e53935'},
+      {x:-size*0.30, y:size*0.06, c:'#43a047'},
+      {x:size*0.30, y:size*0.06, c:'#43a047'},
+      {x:0, y:size*0.34, c:'#fafafa'}
+    ];
+    positions.forEach(p=>{
+      ctx.save();
+      ctx.fillStyle = useColor ? p.c : (p.c === '#fafafa' ? '#fff' : '#000');
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI*2);
+      ctx.fill();
+      if(p.c === '#fafafa'){
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.5; ctx.stroke();
+      }
+      ctx.restore();
+    });
+  }
+
+  ctx.restore();
+}
+
+// Constrói o canvas de um "olho" para o modo vergência.
+// eye: 'left' -> objeto do olho esquerdo (deslocado por vergOffsetX/Y) ; 'right' -> objeto do olho direito (fixo no centro)
+// No modo single (binocular), o MESMO objeto aparece nos dois, mas o do canal 'left' é desenhado na posição deslocada
+// e o do canal 'right' na posição central — o cérebro funde as duas posições, permitindo perceber profundidade/desvio.
+// No modo dual (dissociado), cada canal desenha sua própria figura (mesma forma, mas o paciente relata se vê 1 ou 2).
+function buildVergenceEyeCanvas(eye, bgColor){
+  const c = document.createElement('canvas');
+  c.width = EW; c.height = EH;
+  const ctx = c.getContext('2d');
+  const shape = vergShapeSel.value;
+
+  // Luzes de Worth: lógica completamente separada, fundo sempre preto.
+  // OD (eye==='right'): vê bolinha VERMELHA (topo) e BRANCA (baixo).
+  // OE (eye==='left'):  vê duas bolinhas VERDES (esquerda e direita).
+  // Quando fusão binocular normal: paciente vê as 4 luzes juntas.
+  // Quando supressão de um olho: vê só 2 (verdes = supressão OD) ou 2 (vermelha+branca = supressão OE).
+  // As luzes de Worth não se movem com o offset (são um teste de fusão pura, não de vergência).
+  if(shape === 'worth'){
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,EW,EH);
+    const wR = Math.min(EW,EH) * 0.08;  // bolinhas um pouco maiores
+    const dist = Math.min(EW,EH) * 0.24;
+    // Centro absoluto do canvas — sem compensação de calibração nas coordenadas das bolinhas.
+    // A compensação SBS (sbsHorizontalOffset) é aplicada FORA, na montagem do drawImage,
+    // não dentro do canvas de cada olho.
+    const cx = EW/2, cy = EH/2;
+    const halfX = vergOffsetX / 2;
+    const halfY = vergOffsetY / 2;
+
+    // OD: vermelha (topo) + branca (baixo) — se deslocam juntas na direção do offset
+    const rdx = halfX, rdy = halfY;
+    // OE: verdes (esquerda + direita) — se deslocam no sentido oposto (vergência espelhada)
+    const ldx = -halfX, ldy = -halfY;
+
+    ctx.save();
+    if(eye === 'right' || eye === 'flat'){
+      // Vermelha — topo
+      ctx.fillStyle = '#f44336';
+      ctx.beginPath(); ctx.arc(cx + rdx, cy - dist + rdy, wR, 0, Math.PI*2); ctx.fill();
+      // Branca — baixo
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(cx + rdx, cy + dist + rdy, wR, 0, Math.PI*2); ctx.fill();
+    }
+    if(eye === 'left' || eye === 'flat'){
+      // Verdes — esquerda e direita
+      ctx.fillStyle = '#4caf50';
+      ctx.beginPath(); ctx.arc(cx - dist + ldx, cy + ldy, wR, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + dist + ldx, cy + ldy, wR, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+    return c;
+  }
+
+  // Demais objetos: fundo branco e lógica normal de offset/compensação.
+  ctx.fillStyle = bgColor || '#fff';
+  ctx.fillRect(0,0,EW,EH);
+
+  const objMode = vergObjectModeSel.value;
+  const size = Math.min(EW,EH) * 0.28; // tamanho aumentado (era 0.18)
+
+  // No modo SBS, a calibração de alinhamento (sbsHorizontalOffset/sbsVerticalOffset) desloca a metade
+  // "olho esquerdo" da tela final em X px para compensar o desvio físico do painel/TV. Como o SBS comprime
+  // cada metade em 2x antes de montar, um deslocamento de D px dentro do canvas nasce equivalente a D/2 px
+  // na tela final. Para que o CENTRO PERCEBIDO (ponto médio entre as duas metades, que é o que o cérebro
+  // funde) permaneça no centro real da tela mesmo com essa calibração ativa, compensamos apenas o canal
+  // 'left' nascendo deslocado em -2×offset dentro do seu canvas original — isso anula exatamente o desvio
+  // introduzido depois pela compressão+deslocamento da montagem SBS.
+  const isSbsMode = (etModeSel.value === 'sbs');
+  const leftCompX = isSbsMode ? -2 * sbsHorizontalOffset : 0;
+  const leftCompY = isSbsMode ? -2 * sbsVerticalOffset : 0;
+
+  const rightCenterX = EW/2, rightCenterY = EH/2;
+  const leftCenterX = EW/2 + leftCompX, leftCenterY = EH/2 + leftCompY;
+
+  // Movimento espelhado: cada objeto se desloca metade do offset total, em direções opostas, a partir
+  // do respectivo centro (que já inclui a compensação de calibração acima quando aplicável).
+  // Offset positivo em X => objetos se afastam horizontalmente (divergência); negativo => se aproximam (convergência).
+  const halfX = vergOffsetX / 2;
+  const halfY = vergOffsetY / 2;
+  const rightPos = { x: rightCenterX - halfX, y: rightCenterY - halfY };
+  const leftPos  = { x: leftCenterX + halfX, y: leftCenterY + halfY };
+
+  if(objMode === 'single'){
+    // Ambos os objetos se movem, um em cada direção, em torno do centro.
+    if(eye === 'right' || eye === 'flat'){
+      drawShape(ctx, shape, rightPos.x, rightPos.y, size, true);
+    }
+    if(eye === 'left' || eye === 'flat'){
+      if(eye === 'flat'){
+        ctx.save(); ctx.globalAlpha = 0.55;
+        drawShape(ctx, shape, leftPos.x, leftPos.y, size, true);
+        ctx.restore();
+      } else {
+        drawShape(ctx, shape, leftPos.x, leftPos.y, size, true);
+      }
+    }
+  } else {
+    // Dissociado: cada olho só vê o seu próprio objeto, cada um deslocado em direção oposta.
+    if(eye === 'right'){
+      drawShape(ctx, shape, rightPos.x, rightPos.y, size, true);
+    } else if(eye === 'left'){
+      drawShape(ctx, shape, leftPos.x, leftPos.y, size, true);
+    } else if(eye === 'flat'){
+      drawShape(ctx, shape, rightPos.x, rightPos.y, size, true);
+      ctx.save(); ctx.globalAlpha = 0.55;
+      drawShape(ctx, shape, leftPos.x, leftPos.y, size, true);
+      ctx.restore();
+    }
+  }
+
+  // Cruz de fusão estereoscópica: barra VERTICAL segue o objeto do olho DIREITO (posicionada acima dele),
+  // barra HORIZONTAL segue o objeto do olho ESQUERDO (posicionada acima dele).
+  // Quando os dois objetos estão no mesmo ponto (fusão), as duas barras se sobrepõem formando um "+",
+  // confirmando visualmente que o paciente tem estereopsia e está mantendo a fusão binocular.
+  // Cada barra acompanha o movimento do objeto do seu olho — ao mover pra testar vergência, o "+"
+  // desfaz em dois sinais separados, e se volta quando o paciente re-funde.
+  const crossSize = Math.min(EW,EH) * 0.07;
+  const crossThick = Math.max(4, crossSize * 0.13);
+  const crossColor = '#d32f2f';
+  // Posição da barra = centro horizontal do objeto do olho, e acima do objeto por crossSize + margem
+  const aboveOffset = size * 0.55 + crossSize * 0.6; // distância do centro do objeto ao centro da barra
+
+  ctx.save();
+  ctx.fillStyle = crossColor;
+
+  if(eye === 'right' || eye === 'flat'){
+    // Barra HORIZONTAL: acompanha objeto do olho direito
+    const bx = rightPos.x;
+    const by = rightPos.y - aboveOffset;
+    ctx.fillRect(bx - crossSize, by - crossThick/2, crossSize*2, crossThick);
+  }
+  if(eye === 'left' || eye === 'flat'){
+    // Barra VERTICAL: acompanha objeto do olho esquerdo
+    const bx = leftPos.x;
+    const by = leftPos.y - aboveOffset;
+    ctx.fillRect(bx - crossThick/2, by - crossSize, crossThick, crossSize*2);
+  }
+  ctx.restore();
+
+  return c;
+}
+
+function renderVergence(){
+  const mode = etModeSel.value; // reaproveita o mesmo seletor "Formato de exibição"
+  const shape = vergShapeSel.value;
+
+  // Worth: independente do modo selecionado, sempre usa buildVergenceEyeCanvas que já tem lógica própria
+  if(shape === 'worth'){
+    if(mode === 'sbs'){
+      const leftCanvas = buildVergenceEyeCanvas('left');
+      const rightCanvas = buildVergenceEyeCanvas('right');
+      etctx.clearRect(0,0,EW,EH);
+      etctx.fillStyle = '#000'; etctx.fillRect(0,0,EW,EH);
+      etctx.drawImage(rightCanvas, 0, 0, EW, EH, 0, 0, EW/2, EH);
+      etctx.drawImage(leftCanvas,  0, 0, EW, EH, EW/2 + sbsHorizontalOffset, sbsVerticalOffset, EW/2, EH);
+    } else if(mode === 'interlace' || mode === 'channel'){
+      const leftCanvas = buildVergenceEyeCanvas('left');
+      const rightCanvas = buildVergenceEyeCanvas('right');
+      const leftData = leftCanvas.getContext('2d').getImageData(0,0,EW,EH);
+      const rightData = rightCanvas.getContext('2d').getImageData(0,0,EW,EH);
+      const out = etctx.createImageData(EW,EH);
+      for(let y=0;y<EH;y++){
+        const src = (y%2===0) ? leftData : rightData;
+        const rs = y*EW*4;
+        for(let x=0;x<EW*4;x++) out.data[rs+x] = src.data[rs+x];
+      }
+      etctx.putImageData(out,0,0);
+    } else {
+      const flatCanvas = buildVergenceEyeCanvas('flat');
+      etctx.clearRect(0,0,EW,EH);
+      etctx.drawImage(flatCanvas,0,0);
+    }
+    etBlockLabel.textContent = `Luzes de Worth · offset ${vergOffsetX}px H / ${vergOffsetY}px V`;
+    return;
+  }
+
+  if(mode === 'flat'){
+    const flatCanvas = buildVergenceEyeCanvas('flat');
+    etctx.clearRect(0,0,EW,EH);
+    etctx.drawImage(flatCanvas,0,0);
+  } else if(mode === 'sbs'){
+    const leftCanvas = buildVergenceEyeCanvas('left');
+    const rightCanvas = buildVergenceEyeCanvas('right');
+    etctx.clearRect(0,0,EW,EH);
+    etctx.drawImage(rightCanvas, 0, 0, EW, EH, 0, 0, EW/2, EH);
+    etctx.drawImage(leftCanvas,  0, 0, EW, EH, EW/2 + sbsHorizontalOffset, sbsVerticalOffset, EW/2, EH);
+  } else if(mode === 'channel'){
+    etctx.clearRect(0,0,EW,EH);
+    etctx.fillStyle = '#0dbf1f';
+    etctx.fillRect(0,0,EW/2,EH);
+    etctx.fillStyle = '#ff3300';
+    etctx.fillRect(EW/2,0,EW/2,EH);
+    const shape = vergShapeSel.value;
+    const size = Math.min(EW,EH) * 0.28; // tamanho aumentado
+    const halfX = vergOffsetX / 2;
+    const halfY = vergOffsetY / 2;
+    drawShape(etctx, shape, EW*0.25 - halfX, EH/2 - halfY, size, true);
+    drawShape(etctx, shape, EW*0.75 + halfX, EH/2 + halfY, size, true);
+  } else {
+    // interlace (padrão)
+    const leftCanvas = buildVergenceEyeCanvas('left');
+    const rightCanvas = buildVergenceEyeCanvas('right');
+    const leftData = leftCanvas.getContext('2d').getImageData(0,0,EW,EH);
+    const rightData = rightCanvas.getContext('2d').getImageData(0,0,EW,EH);
+    const out = etctx.createImageData(EW,EH);
+    for(let y=0;y<EH;y++){
+      const src = (y % 2 === 0) ? leftData : rightData;
+      const rowStart = y*EW*4;
+      for(let x=0;x<EW*4;x++){
+        out.data[rowStart+x] = src.data[rowStart+x];
+      }
+    }
+    etctx.putImageData(out,0,0);
+  }
+
+  etBlockLabel.textContent = `Vergência · ${vergObjectModeSel.value==='single' ? '1 objeto' : '2 objetos'} · offset ${vergOffsetX}px H / ${vergOffsetY}px V`;
+}
+
+function updateVergLabels(){
+  vergVLabel.textContent = vergOffsetY + 'px';
+  vergHLabel.textContent = vergOffsetX + 'px';
+}
+function adjustVergV(delta){ vergOffsetY += delta; updateVergLabels(); renderEtdrs(); }
+function adjustVergH(delta){ vergOffsetX += delta; updateVergLabels(); renderEtdrs(); }
+
+vergUpBtn.addEventListener('click', ()=> adjustVergV(-parseInt(vergStepSel.value,10)));
+vergDownBtn.addEventListener('click', ()=> adjustVergV(parseInt(vergStepSel.value,10)));
+vergLeftBtn.addEventListener('click', ()=> adjustVergH(-parseInt(vergStepSel.value,10)));
+vergRightBtn.addEventListener('click', ()=> adjustVergH(parseInt(vergStepSel.value,10)));
+vergResetBtn.addEventListener('click', ()=>{
+  vergOffsetX = 0; vergOffsetY = 0;
+  updateVergLabels();
+  renderEtdrs();
+});
+document.getElementById('verg-fs-up').addEventListener('click', ()=> adjustVergV(-parseInt(vergStepSel.value,10)));
+document.getElementById('verg-fs-down').addEventListener('click', ()=> adjustVergV(parseInt(vergStepSel.value,10)));
+document.getElementById('verg-fs-left').addEventListener('click', ()=> adjustVergH(-parseInt(vergStepSel.value,10)));
+document.getElementById('verg-fs-right').addEventListener('click', ()=> adjustVergH(parseInt(vergStepSel.value,10)));
+document.getElementById('verg-fs-reset').addEventListener('click', ()=>{
+  vergOffsetX = 0; vergOffsetY = 0;
+  updateVergLabels();
+  renderEtdrs();
+});
+vergObjectModeSel.addEventListener('change', renderEtdrs);
+vergShapeSel.addEventListener('change', ()=>{
+  // Sincroniza o seletor do fullscreen com o painel principal
+  const fsShape = document.getElementById('verg-fs-shape');
+  if(fsShape) fsShape.value = vergShapeSel.value;
+  renderEtdrs();
+});
+// Seletor de objeto no fullscreen: sincroniza de volta para o painel e re-renderiza
+document.getElementById('verg-fs-shape').addEventListener('change', ()=>{
+  vergShapeSel.value = document.getElementById('verg-fs-shape').value;
+  renderEtdrs();
+});
+
+updateLayoutControls();
+generateEtdrsLetters();
+renderEtdrs();
+
+/* ================= VETOGRAMA DE CORDA (v2 — corda grossa, espiral retangular, vergência H+V) ================= */
+const vectCanvas = document.getElementById('vect-canvas');
+const vctx = vectCanvas.getContext('2d');
+const vectModeSel = document.getElementById('vect-mode');
+const vectTypeSel = document.getElementById('vect-type');
+const vectDisparitySel = document.getElementById('vect-disparity');
+const VW = vectCanvas.width, VH = vectCanvas.height;
+
+let vectOffsetX = -80; // valor de centralização calibrado: -80px H alinha as duas metades SBS na TV
+let vectOffsetY = 0;
+const VECT_STEP = 10;
+
+function updateVectLabels(){
+  document.getElementById('vect-h-label').textContent = vectOffsetX + 'px';
+  document.getElementById('vect-v-label').textContent = vectOffsetY + 'px';
+  const fsLabel = document.getElementById('vect-fs-label');
+  if(fsLabel) fsLabel.textContent = `H: ${vectOffsetX}px · V: ${vectOffsetY}px`;
+}
+
+// ─── CORDA: desenha uma linha de corda torcida (duplo helicoidal) ao longo de um array de pontos ───
+function drawRope(ctx, pts, thickness, colorA, colorB){
+  if(pts.length < 2) return;
+  const segLen = thickness * 0.85; // passo do padrão helicoidal
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 1. Sombra de fundo (dá volume à corda)
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+  ctx.lineWidth = thickness * 1.45;
+  ctx.stroke();
+
+  // 2. Base da corda (tom médio)
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.strokeStyle = colorB;
+  ctx.lineWidth = thickness;
+  ctx.stroke();
+
+  // 3. Fios helicoidais: dois fios torcidos alternados, cada um deslocado perpendicularmente à tangente
+  for(let fio=0; fio<2; fio++){
+    ctx.beginPath();
+    let inFio = false;
+    for(let i=0;i<pts.length-1;i++){
+      const p = pts[i], q = pts[i+1];
+      const dx=q.x-p.x, dy=q.y-p.y;
+      const len=Math.sqrt(dx*dx+dy*dy)||1;
+      const nx=-dy/len, ny=dx/len;
+      // fase helicoidal: seno ao longo do comprimento acumulado
+      const phase = (i/pts.length)*Math.PI*2 * (pts.length/segLen);
+      const s = Math.sin(phase + fio*Math.PI);
+      const offset = s * thickness * 0.32;
+      const px = p.x + nx*offset, py = p.y + ny*offset;
+      if(!inFio){ ctx.moveTo(px,py); inFio=true; }
+      else ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle = colorA;
+    ctx.lineWidth = thickness * 0.30;
+    ctx.stroke();
+  }
+
+  // 4. Brilho superior
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.strokeStyle = 'rgba(255,255,255,0.22)';
+  ctx.lineWidth = thickness * 0.28;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ─── MARCADOR: círculo com letra/número, estilo Three Dimension Rx ───
+function drawMarker(ctx, x, y, label, r, lineColor, textColor){
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2);
+  ctx.fillStyle = '#fff'; ctx.fill();
+  ctx.strokeStyle = lineColor; ctx.lineWidth = Math.max(2, r*0.18); ctx.stroke();
+  ctx.fillStyle = textColor;
+  ctx.font = `bold ${Math.round(r*1.1)}px Arial`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, x, y+r*0.07);
+  ctx.restore();
+}
+
+// ─── ESPIRAL CIRCULAR ───
+function spiralPts(cx, cy, startR, endR, turns, n){
+  const pts=[];
+  for(let i=0;i<=n;i++){
+    const t=i/n;
+    const angle=t*turns*2*Math.PI - Math.PI/2;
+    const r=startR+(endR-startR)*t;
+    pts.push({x:cx+Math.cos(angle)*r, y:cy+Math.sin(angle)*r, t});
+  }
+  return pts;
+}
+
+function drawSpiralVectogram(ctx, dx, dy, eyeSign){
+  eyeSign = eyeSign || 0;
+  const cx=VW/2+dx, cy=VH/2+dy;
+  const maxR=Math.min(VW,VH)*0.43;
+  const minR=36;
+  const turns=3.4;
+  const nPts=1600;
+  const thickness=28;
+  const pts=spiralPts(cx,cy,minR,maxR,turns,nPts);
+
+  const lineColor='#3a6fa8';
+  const fioColor='#6aabdd';
+
+  drawRope(ctx, pts, thickness, fioColor, lineColor);
+
+  // Cruz de fixação central
+  const cr=22;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,cy,cr,0,Math.PI*2);
+  ctx.fillStyle='#fff'; ctx.fill();
+  ctx.strokeStyle=lineColor; ctx.lineWidth=3; ctx.stroke();
+  ctx.strokeStyle=lineColor; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(cx-13,cy); ctx.lineTo(cx+13,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,cy-13); ctx.lineTo(cx,cy+13); ctx.stroke();
+  ctx.restore();
+
+  // Posições e disparidades dos marcadores — geradas UMA VEZ e cacheadas.
+  // Assim swipe/centralizar não reposiciona as letras.
+  if(!vectSpiralLayout){
+    const numMarkers = 10;
+    const positions = [];
+    let tries = 0;
+    while(positions.length < numMarkers && tries < 500){
+      const t = 0.03 + Math.random() * 0.93;
+      const tooClose = positions.some(e => Math.abs(e-t) < 0.07);
+      if(!tooClose) positions.push(t);
+      tries++;
+    }
+    positions.sort((a,b)=>a-b);
+    vectSpiralLayout = {
+      markerPositions: positions,
+      markerDisparities: uniqueRandomDisparities(positions.length, 0, 38)
+    };
+  }
+  const {markerPositions, markerDisparities} = vectSpiralLayout;
+  const letters='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  markerPositions.forEach((t, mIdx)=>{
+    const idx = Math.min(Math.round(t*nPts), pts.length-1);
+    const p = pts[idx];
+    const label = mIdx < letters.length ? letters[mIdx] : String(mIdx+1);
+    const mr = 14 + Math.round(t * 18);
+    const mDisp = markerDisparities[mIdx] || 0;
+    drawMarker(ctx, p.x + eyeSign*mDisp, p.y, label, mr, lineColor, '#1a3f6a');
+  });
+}
+
+// ─── ESPIRAL RETANGULAR CONCÊNTRICA (estilo Three Dimension Rx No.5) — refazer fiel à foto ───
+// Quatro retângulos concêntricos, cada vez maiores, com:
+// - marcadores circulares com letras nos 4 vértices E no meio dos 4 lados (8 por nível)
+// - linhas retas conectando cada vértice/ponto ao nível seguinte
+// - retângulos grandes, ocupando a maior parte da tela
+function drawRectVectogram(ctx, dx, dy, eyeSign){
+  eyeSign = eyeSign || 0;
+  const cx=VW/2+dx, cy=VH/2+dy;
+  const lineColor='#3a6fa8';  // mesmo azul da espiral circular
+  const fioColor='#6aabdd';   // mesmo azul claro da espiral circular
+  const thickness=20;
+
+  // Tamanho proporcional à espiral circular (~43% da menor dimensão, mesma escala)
+  // Margem generosa para os marcadores não saírem da tela
+  const maxExtent = Math.min(VW,VH) * 0.43;
+  const levs = 3; // 3 níveis em vez de 4 — menos informação visual
+  const levels = [];
+  for(let l=0;l<levs;l++){
+    const frac = (l+1)/levs;
+    const w = maxExtent * frac;
+    const h = maxExtent * frac * 0.72;
+    levels.push({ x0:cx-w, y0:cy-h, x1:cx+w, y1:cy+h });
+  }
+
+  // Linhas de conexão entre níveis — só nos 4 vértices (não nos meios)
+  ctx.save();
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 3;
+  for(let l=0;l<levs-1;l++){
+    const a=levels[l], b=levels[l+1];
+    const pA = rectCorners(a), pB = rectCorners(b);
+    for(let i=0;i<pA.length;i++){
+      ctx.beginPath(); ctx.moveTo(pA[i].x,pA[i].y); ctx.lineTo(pB[i].x,pB[i].y); ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // Retângulos como corda
+  levels.forEach(lv=>{
+    const pts=[
+      {x:lv.x0,y:lv.y0},{x:lv.x1,y:lv.y0},{x:lv.x1,y:lv.y1},{x:lv.x0,y:lv.y1},{x:lv.x0,y:lv.y0}
+    ];
+    drawRope(ctx,pts,thickness,fioColor,lineColor);
+  });
+
+  // Marcadores apenas nos 4 vértices de cada nível = 3×4 = 12 marcadores
+  // Disparidades cacheadas para não mudar a cada render
+  const totalRectMarkers = levs * 4;
+  if(!vectRectLayout){
+    vectRectLayout = { rectDisparities: uniqueRandomDisparities(totalRectMarkers, 0, 40) };
+  }
+  const {rectDisparities} = vectRectLayout;
+  const rectLetters='ABCDEFGHIJKLMNOPQR'.split('');
+  let li=0;
+  levels.forEach((lv, lvIdx)=>{
+    const mr = 20 + lvIdx * 6;
+    rectCorners(lv).forEach(p=>{
+      const label=rectLetters[li]||'·';
+      const mDisp = rectDisparities[li] || 0;
+      drawMarker(ctx, p.x + eyeSign*mDisp, p.y, label, mr, lineColor, '#1a3f6a');
+      li++;
+    });
+  });
+
+  // Cruz central
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx,cy,22,0,Math.PI*2);
+  ctx.fillStyle='#fff'; ctx.fill();
+  ctx.strokeStyle=lineColor; ctx.lineWidth=3; ctx.stroke();
+  ctx.strokeStyle=lineColor; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(cx-13,cy); ctx.lineTo(cx+13,cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx,cy-13); ctx.lineTo(cx,cy+13); ctx.stroke();
+  ctx.restore();
+}
+
+// Retorna apenas os 4 vértices de um retângulo (versão simplificada para menos marcadores)
+function rectCorners(lv){
+  return [
+    {x:lv.x0,y:lv.y0}, // TL
+    {x:lv.x1,y:lv.y0}, // TR
+    {x:lv.x1,y:lv.y1}, // BR
+    {x:lv.x0,y:lv.y1}, // BL
+  ];
+}
+
+// Retorna os 8 pontos chave de um retângulo (4 vértices + 4 meios dos lados), em ordem consistente
+function rectKeyPoints(lv){
+  const mx=(lv.x0+lv.x1)/2, my=(lv.y0+lv.y1)/2;
+  return [
+    {x:lv.x0,y:lv.y0}, // canto TL
+    {x:mx,   y:lv.y0}, // meio topo
+    {x:lv.x1,y:lv.y0}, // canto TR
+    {x:lv.x1,y:my},    // meio direito
+    {x:lv.x1,y:lv.y1}, // canto BR
+    {x:mx,   y:lv.y1}, // meio baixo
+    {x:lv.x0,y:lv.y1}, // canto BL
+    {x:lv.x0,y:my},    // meio esquerdo
+  ];
+}
+
+// ─── VETOGRAMA DE BOLAS COLORIDAS ───
+const BALLOON_COLORS = ['#f06292','#26a69a','#5c6bc0','#ffca28','#ef5350','#26c6da','#66bb6a','#ff7043','#ab47bc','#42a5f5'];
+const BALLOON_SYMBOLS = ['A','B','C','D','E','F','G','H','1','2','3','4','5','6','7','8'];
+
+function lightenColor(hex, amt){
+  try{
+    const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+    return `rgb(${Math.min(255,Math.round(r+(255-r)*amt))},${Math.min(255,Math.round(g+(255-g)*amt))},${Math.min(255,Math.round(b+(255-b)*amt))})`;
+  }catch(e){return hex;}
+}
+function darkenColor2(hex, amt){
+  try{
+    const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+    return `rgb(${Math.round(r*(1-amt))},${Math.round(g*(1-amt))},${Math.round(b*(1-amt))})`;
+  }catch(e){return hex;}
+}
+
+// Posições fixas das bolas (geradas uma vez por sessão para serem estáveis)
+// Gera N valores de disparidade únicos e aleatórios no intervalo [min, max],
+// embaralhados para que nenhum dois consecutivos sejam iguais.
+// Usada nos vetogramas para dar profundidade única a cada marcador/bola.
+function uniqueRandomDisparities(n, min, max){
+  const range = max - min;
+  const step = range / n;
+  // Cria valores uniformemente espaçados e então embaralha
+  const vals = [];
+  for(let i=0;i<n;i++){
+    vals.push(Math.round(min + i*step + (Math.random()-0.5)*step*0.6));
+  }
+  // Fisher-Yates shuffle
+  for(let i=vals.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [vals[i],vals[j]]=[vals[j],vals[i]];
+  }
+  return vals;
+}
+
+let balloonLayout = null;
+// Cache dos layouts dos vetogramas — gerados uma vez e reutilizados em cada render
+// para evitar que as posições/disparidades mudem a cada swipe ou centralizar.
+let vectSpiralLayout = null;  // {markerPositions, markerDisparities}
+let vectRectLayout   = null;  // {rectDisparities}
+
+function resetVectLayouts(){
+  vectSpiralLayout = null;
+  vectRectLayout   = null;
+  balloonLayout    = null;
+}
+function getBalloonLayout(){
+  if(balloonLayout) return balloonLayout;
+  // Layout centralizado em torno de VW/2, VH/2.
+  // Cada bola tem sua própria disparidade binocular (disp), criando profundidades diferentes.
+  // Disparidade positiva alta = flutua na FRENTE da tela; negativa ou zero = atrás ou plana.
+  const cx = VW/2, cy = VH/2;
+  // Margem segura: as bolas não podem sair da área VW/2 de largura centrada em VW/2
+  // (porque no SBS cada metade exibe apenas uma fatia de VW/2)
+  // Bolas distribuídas pelo canvas inteiro (VW x VH), mas com posição X limitada
+  // para que mesmo com o deslocamento de disparidade (max 45px), nada saia da metade segura do SBS.
+  const maxDisp = 45;
+  const marginX = 90 + maxDisp; // margem horizontal inclui o pior deslocamento possível
+  const marginY = 90;
+  const cols = 4, rows = 3;
+  const usableW = VW - marginX * 2;
+  const usableH = VH - marginY * 2;
+  const cellW = usableW / cols, cellH = usableH / rows;
+  const balls = [];
+  const ballDisparities = uniqueRandomDisparities(cols*rows, -10, maxDisp);
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      const idx = r*cols + c;
+      const px = (idx*137 % 100)/100;
+      const py = (idx*73  % 100)/100;
+      // Variação interna moderada para espaçamento consistente
+      const x = marginX + cellW*(c + 0.30 + px*0.40);
+      const y = marginY + cellH*(r + 0.30 + py*0.40);
+      const colorIdx = idx % BALLOON_COLORS.length;
+      const symbol = BALLOON_SYMBOLS[idx % BALLOON_SYMBOLS.length];
+      const size = 42 + (idx*31%24);
+      const individualDisp = ballDisparities[idx];
+      balls.push({x, y, colorIdx, symbol, size, individualDisp});
+    }
+  }
+  balloonLayout = balls;
+  return balls;
+}
+
+function drawBalloon(ctx, x, y, size, color, symbol){
+  const r = size;
+  ctx.save();
+  ctx.shadowColor='rgba(0,0,0,0.25)'; ctx.shadowBlur=size*0.3; ctx.shadowOffsetY=size*0.15;
+  ctx.fillStyle='rgba(0,0,0,0.01)';
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+  const grad = ctx.createRadialGradient(x-r*0.3, y-r*0.3, r*0.05, x, y, r);
+  grad.addColorStop(0, lightenColor(color, 0.4));
+  grad.addColorStop(0.6, color);
+  grad.addColorStop(1, darkenColor2(color, 0.3));
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.38)';
+  ctx.beginPath(); ctx.ellipse(x-r*0.28, y-r*0.3, r*0.22, r*0.14, -0.5, 0, Math.PI*2); ctx.fill();
+  ctx.save();
+  ctx.fillStyle='#fff';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font=`bold ${Math.round(r*1.05)}px Arial`;
+  ctx.shadowColor='rgba(0,0,0,0.4)'; ctx.shadowBlur=4;
+  ctx.fillText(symbol, x, y+r*0.05);
+  ctx.restore();
+}
+
+// eyeSign: +1 = OD, -1 = OE, 0 = flat
+// globalDx/Dy: deslocamento global de vergência (vectOffsetX/Y espelhado)
+function drawBalloonsVectogram(ctx, eyeSign, globalDx, globalDy){
+  const bgGrad = ctx.createLinearGradient(0,0,0,VH);
+  bgGrad.addColorStop(0,'#f8f9fa'); bgGrad.addColorStop(1,'#eef0f2');
+  ctx.fillStyle = bgGrad; ctx.fillRect(0,0,VW,VH);
+
+  const balls = getBalloonLayout();
+  balls.forEach(b=>{
+    // Cada bola tem sua própria disparidade + a vergência global
+    const bx = b.x + eyeSign * b.individualDisp + globalDx;
+    const by = b.y + globalDy;
+    drawBalloon(ctx, bx, by, b.size, BALLOON_COLORS[b.colorIdx], b.symbol);
+  });
+}
+
+// ─── CANVAS POR OLHO ───
+// ─── CANVAS POR OLHO (Vetograma) ───
+function buildVectEyeCanvas(eyeSign){
+  const c=document.createElement('canvas');
+  c.width=VW; c.height=VH;
+  const ctx=c.getContext('2d');
+  ctx.fillStyle='#f8f9fa'; ctx.fillRect(0,0,VW,VH);
+
+  const disp=parseInt(vectDisparitySel.value,10);
+  // No SBS, a montagem desloca o canvas OE por +sbsHorizontalOffset pixels na tela final.
+  // Como o SBS comprime cada metade 2x, esse deslocamento de tela equivale a sbsHorizontalOffset/2 px percebidos.
+  // Para centralizar: deslocamos o conteúdo do canvas OE por -sbsHorizontalOffset px (não ×2, pois a
+  // compressão já divide por 2 na percepção), fazendo o centro percebido cair em VW/2.
+  const isSbs = (vectModeSel.value === 'sbs');
+  const calCompX = (isSbs && eyeSign < 0) ? -sbsHorizontalOffset : 0;
+  const calCompY = (isSbs && eyeSign < 0) ? -sbsVerticalOffset   : 0;
+
+  const dx = eyeSign * (disp + vectOffsetX) + calCompX;
+  const dy = eyeSign * vectOffsetY + calCompY;
+
+  if(vectTypeSel.value==='rect'){
+    drawRectVectogram(ctx,dx,dy,eyeSign);
+  } else if(vectTypeSel.value==='balloons'){
+    drawBalloonsVectogram(ctx, eyeSign, dx, dy);
+  } else {
+    drawSpiralVectogram(ctx,dx,dy,eyeSign);
+  }
+  return c;
+}
+
+function renderVectogram(){
+  const mode=vectModeSel.value;
+  vctx.clearRect(0,0,VW,VH);
+
+  if(mode==='flat'){
+    // No modo flat mostra a posição central (sem separação binocular) para referência
+    vctx.drawImage(buildVectEyeCanvas(0),0,0);
+  } else if(mode==='sbs'){
+    const rC=buildVectEyeCanvas(1);   // OD: deslocado positivamente
+    const lC=buildVectEyeCanvas(-1);  // OE: deslocado negativamente (espelho)
+    vctx.fillStyle='#f8f9fa'; vctx.fillRect(0,0,VW,VH);
+    vctx.drawImage(rC,0,0,VW,VH,0,0,VW/2,VH);
+    vctx.drawImage(lC,0,0,VW,VH,VW/2+sbsHorizontalOffset,sbsVerticalOffset,VW/2,VH);
+  } else {
+    // Interlace
+    const rC=buildVectEyeCanvas(1);
+    const lC=buildVectEyeCanvas(-1);
+    const rD=rC.getContext('2d').getImageData(0,0,VW,VH);
+    const lD=lC.getContext('2d').getImageData(0,0,VW,VH);
+    const out=vctx.createImageData(VW,VH);
+    for(let y=0;y<VH;y++){
+      const src=(y%2===0)?rD:lD;
+      const rs=y*VW*4;
+      for(let x=0;x<VW*4;x++) out.data[rs+x]=src.data[rs+x];
+    }
+    vctx.putImageData(out,0,0);
+  }
+  updateVectLabels();
+}
+
+// Controles de vergência
+document.getElementById('vect-h-pos').addEventListener('click',()=>{vectOffsetX+=VECT_STEP;renderVectogram();});
+document.getElementById('vect-h-neg').addEventListener('click',()=>{vectOffsetX-=VECT_STEP;renderVectogram();});
+document.getElementById('vect-v-pos').addEventListener('click',()=>{vectOffsetY+=VECT_STEP;renderVectogram();});
+document.getElementById('vect-v-neg').addEventListener('click',()=>{vectOffsetY-=VECT_STEP;renderVectogram();});
+document.getElementById('vect-center').addEventListener('click',()=>{vectOffsetX=-80;vectOffsetY=0;renderVectogram();});
+document.getElementById('vect-fs-h-pos').addEventListener('click',()=>{vectOffsetX+=VECT_STEP;renderVectogram();});
+document.getElementById('vect-fs-h-neg').addEventListener('click',()=>{vectOffsetX-=VECT_STEP;renderVectogram();});
+document.getElementById('vect-fs-v-pos').addEventListener('click',()=>{vectOffsetY+=VECT_STEP;renderVectogram();});
+document.getElementById('vect-fs-v-neg').addEventListener('click',()=>{vectOffsetY-=VECT_STEP;renderVectogram();});
+document.getElementById('vect-fs-center').addEventListener('click',()=>{vectOffsetX=-80;vectOffsetY=0;renderVectogram();});
+vectModeSel.addEventListener('change',renderVectogram);
+vectDisparitySel.addEventListener('change',renderVectogram);
+vectTypeSel.addEventListener('change',()=>{ resetVectLayouts(); renderVectogram(); });
+/* ================= FULLSCREEN (todas as abas) ================= */
+function enterFullscreen(el){
+  if(el.requestFullscreen) el.requestFullscreen();
+  else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+}
+function exitFullscreen(){
+  if(document.exitFullscreen) document.exitFullscreen();
+  else if(document.webkitExitFullscreen) document.webkitExitFullscreen();
+}
+
+// --- ETDRS fullscreen ---
+document.getElementById('etdrs-fullscreen').addEventListener('click', ()=>{
+  enterFullscreen(document.getElementById('etdrs-canvas-wrap'));
+});
+document.getElementById('etdrs-fs-exit').addEventListener('click', exitFullscreen);
+document.getElementById('etdrs-fs-prev').addEventListener('click', ()=> etPrevBtn.click());
+document.getElementById('etdrs-fs-next').addEventListener('click', ()=> etNextBtn.click());
+document.getElementById('etdrs-fs-redraw').addEventListener('click', ()=> etRedrawBtn.click());
+function syncEtdrsFsLabel(){
+  document.getElementById('etdrs-fs-label').textContent = etBlockLabel.textContent;
+}
+const etdrsLabelObserver = new MutationObserver(syncEtdrsFsLabel);
+etdrsLabelObserver.observe(etBlockLabel, {childList:true, characterData:true, subtree:true});
+syncEtdrsFsLabel();
+
+// --- Vetograma fullscreen ---
+document.getElementById('vect-fullscreen').addEventListener('click', ()=>{
+  enterFullscreen(document.getElementById('vect-canvas-wrap'));
+});
+document.getElementById('vect-fs-exit').addEventListener('click', exitFullscreen);
+
+// Redesenha os canvases ao entrar/sair do fullscreen (o navegador redimensiona o layout)
+document.addEventListener('fullscreenchange', ()=>{
+  renderEtdrs();
+  renderVectogram();
+});
+
+// --- Esconder/mostrar barra de controles em tela cheia ---
+// Permite ao examinador ocultar completamente os controles da visão do paciente,
+// deixando só o conteúdo (letras/objeto) na tela. Sem nenhum botão visível.
+// Duas formas de acionar: tecla "C" (teclado físico) ou toque triplo rápido em qualquer lugar da tela (touch, sem teclado).
+function toggleControlsOverlay(){
+  document.querySelectorAll('.fs-overlay').forEach(overlay=>{
+    overlay.classList.toggle('overlay-hidden');
+  });
+}
+
+document.addEventListener('keydown', (e)=>{
+  if(!document.fullscreenElement) return; // só age quando já está em tela cheia
+  const key = (e.key || '').toLowerCase();
+  if(key === 'c'){
+    toggleControlsOverlay();
+  }
+});
+
+// --- Gestos de toque em tela cheia: swipe horizontal (navegação) e toque triplo (mostrar/esconder controles) ---
+// Swipe para ESQUERDA avança (letras menores / mais vergência); para DIREITA volta.
+// Toque triplo rápido e parado no lugar alterna a barra de controles.
+// Toques que começam em cima de um botão/select/input continuam funcionando normalmente (não viram gesto).
+let tapCount = 0;
+let tapTimer = null;
+let swipeStartX = null;
+let swipeStartY = null;
+let swipeStartTarget = null;
+const SWIPE_MIN_DISTANCE = 60; // px mínimos para considerar um swipe válido, evita confundir com toque parado
+const SWIPE_MAX_VERTICAL = 80; // se o dedo desviar muito na vertical, não conta como swipe horizontal
+
+document.addEventListener('touchstart', (e)=>{
+  if(!document.fullscreenElement) return;
+  if(e.touches.length !== 1) return;
+  const t = e.touches[0];
+  swipeStartX = t.clientX;
+  swipeStartY = t.clientY;
+  swipeStartTarget = e.target;
+}, { passive: true });
+
+document.addEventListener('touchend', (e)=>{
+  if(!document.fullscreenElement) return;
+
+  // Toques em cima de controles interativos: não vira gesto, deixa o elemento responder normalmente.
+  const startedOnControl = swipeStartTarget && swipeStartTarget.closest &&
+    swipeStartTarget.closest('button, select, input, .fs-overlay');
+  if(startedOnControl){
+    swipeStartX = null; swipeStartY = null; swipeStartTarget = null;
+    return;
+  }
+
+  let wasSwipe = false;
+  if(swipeStartX !== null && e.changedTouches && e.changedTouches[0]){
+    const t = e.changedTouches[0];
+    const dx = t.clientX - swipeStartX;
+    const dy = t.clientY - swipeStartY;
+    const absDx = Math.abs(dx), absDy = Math.abs(dy);
+
+    const isEtdrsTab = !document.getElementById('tab-etdrs').classList.contains('hidden');
+    const isVectTab  = !document.getElementById('tab-vectogram').classList.contains('hidden');
+
+    // Swipe horizontal (ETDRS e vergência)
+    if(absDy <= SWIPE_MAX_VERTICAL && absDx >= SWIPE_MIN_DISTANCE){
+      wasSwipe = true;
+      if(isEtdrsTab){
+        const isVergence = (etContentTypeSel.value === 'vergence');
+        if(dx < 0){
+          if(isVergence) adjustVergH(parseInt(vergStepSel.value,10));
+          else navigateNext();
+        } else {
+          if(isVergence) adjustVergH(-parseInt(vergStepSel.value,10));
+          else navigatePrev();
+        }
+      } else if(isVectTab){
+        // Swipe horizontal no vetograma = vergência horizontal
+        if(dx < 0){ vectOffsetX += VECT_STEP; } else { vectOffsetX -= VECT_STEP; }
+        renderVectogram();
+      }
+    }
+    // Swipe vertical (vetograma = vergência vertical)
+    else if(absDy >= SWIPE_MIN_DISTANCE && absDx <= SWIPE_MAX_VERTICAL && isVectTab){
+      wasSwipe = true;
+      if(dy < 0){ vectOffsetY -= VECT_STEP; } else { vectOffsetY += VECT_STEP; }
+      renderVectogram();
+    }
+  }
+  swipeStartX = null; swipeStartY = null; swipeStartTarget = null;
+
+  // Se não foi um swipe, conta como toque parado para gestos de toque duplo e triplo.
+  // Exceção: o soltar de um long press (isolamento de fileira) não conta como toque.
+  if(!wasSwipe){
+    if(suppressNextTap){
+      suppressNextTap = false;
+      return;
+    }
+    tapCount++;
+    if(tapTimer) clearTimeout(tapTimer);
+    tapTimer = setTimeout(()=>{
+      const count = tapCount;
+      tapCount = 0;
+      const isEtdrsTab = !document.getElementById('tab-etdrs').classList.contains('hidden');
+
+      if(count === 2){
+        // TOQUE DUPLO: nova sequência aleatória (letras/objetos) ou próximo objeto (vergência)
+        if(isEtdrsTab){
+          const isVerg = (etContentTypeSel.value === 'vergence');
+          if(isVerg){
+            const shapes = ['bird','boat','ball','star','dog','car','worth'];
+            const cur = vergShapeSel.value;
+            const nextIdx = (shapes.indexOf(cur) + 1) % shapes.length;
+            vergShapeSel.value = shapes[nextIdx];
+            const fsShape = document.getElementById('verg-fs-shape');
+            if(fsShape) fsShape.value = shapes[nextIdx];
+            renderEtdrs();
+          } else {
+            generateEtdrsLetters();
+            renderEtdrs();
+          }
+        }
+      } else if(count === 3){
+        // TOQUE TRIPLO: abre/fecha painel de controles
+        toggleControlsOverlay();
+      } else if(count >= 4){
+        // QUÁDRUPLO TOQUE: troca fonte (letras/números/letras coloridas)
+        if(isEtdrsTab){
+          const ct = etContentTypeSel.value;
+          if(ct === 'letters' || ct === 'numbers' || ct === 'numberscolor' || ct === 'colored'){
+            const opts = etFontSel.options;
+            etFontSel.selectedIndex = (etFontSel.selectedIndex + 1) % opts.length;
+            renderEtdrs(); // re-renderiza com nova fonte sem gerar novas letras
+          }
+        }
+      }
+    }, 350); // 350ms de janela para acumular toques antes de decidir a ação
+  }
+});
+// ─── REGISTRO DO SERVICE WORKER (PWA — funciona offline) ───
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => console.log('SW registrado:', reg.scope))
+      .catch(err => console.warn('SW falhou:', err));
+  });
+}
+</script>
+</body>
+</html>
